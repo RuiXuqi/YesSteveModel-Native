@@ -83,7 +83,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: conan/cache
-          key: conan-macos-arm64-${{ env.BUILD_TYPE }}-conan-${{ env.CONAN_VERSION }}-cmake-${{ env.CMAKE_VERSION }}-ninja-${{ env.NINJA_VERSION }}-nasm-${{ env.NASM_VERSION }}-${{ hashFiles('conanfile.py', 'conan/profile-override', 'conan/**', 'third-party/**') }}
+          key: conan-macos-arm64-${{ env.BUILD_TYPE }}-conan-${{ env.CONAN_VERSION }}-cmake-${{ env.CMAKE_VERSION }}-ninja-${{ env.NINJA_VERSION }}-nasm-${{ env.NASM_VERSION }}-${{ hashFiles('**/conanfile.py') }}
           restore-keys: |
             conan-macos-arm64-${{ env.BUILD_TYPE }}-conan-${{ env.CONAN_VERSION }}-cmake-${{ env.CMAKE_VERSION }}-ninja-${{ env.NINJA_VERSION }}-nasm-${{ env.NASM_VERSION }}-
             conan-macos-arm64-
