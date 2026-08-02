@@ -1,6 +1,9 @@
 name: Build Native Windows x64
 
 on:
+  push:
+    branches:
+      - dev
   workflow_dispatch:
     inputs:
       build_type:
@@ -19,7 +22,7 @@ jobs:
   build:
     runs-on: windows-latest
     env:
-      BUILD_TYPE: ${{ inputs.build_type }}
+      BUILD_TYPE: ${{ inputs.build_type || 'Release' }}
       CONAN_VERSION: '2.31.1'
 
     steps:

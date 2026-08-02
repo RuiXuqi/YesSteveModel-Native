@@ -1,6 +1,9 @@
 name: Build Native Android arm64
 
 on:
+  push:
+    branches:
+      - dev
   workflow_dispatch:
     inputs:
       build_type:
@@ -19,7 +22,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     env:
-      BUILD_TYPE: ${{ inputs.build_type }}
+      BUILD_TYPE: ${{ inputs.build_type || 'Release' }}
       CONAN_VERSION: '2.31.1'
       CMAKE_VERSION: '4.4.2'
       NINJA_VERSION: '1.13.2'
