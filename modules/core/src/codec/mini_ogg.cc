@@ -22,7 +22,7 @@ void MiniOgg::Reset() noexcept {
 
 gch::optional_cref<MiniOgg::PageHeader> MiniOgg::Page() const noexcept {
     if (demux_state_ != State::kHeader) {
-        return gch::optional_cref(header_);
+        return gch::optional_cref<PageHeader>{header_};
     }
     return gch::nullopt;
 }
