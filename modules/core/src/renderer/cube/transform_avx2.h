@@ -195,7 +195,7 @@ YSM_TARGET_AVX2 YSM_INLINE uint32_t StoreBackFacesAvx2(
     _mm_storel_epi64(reinterpret_cast<__m128i*>(destination.data()), packed8);
     auto back_face_bits =
         static_cast<uint32_t>(_mm256_movemask_ps(back_face));
-#if !defined(_MSC_VER) && (defined(__GNUC__) || defined(__clang__))
+#if defined(__GNUC__) || defined(__clang__)
     asm volatile("" : "+r"(back_face_bits));    // 防溢出
 #endif
     return back_face_bits;
