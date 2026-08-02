@@ -1,0 +1,146 @@
+name: Build Native Linux x86_64
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: CMake build type
+        required: true
+        default: Release
+        type: choice
+        options:
+          - Release
+          - Debug
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      BUILD_TYPE: ${{ inputs.build_type }}
+      CONAN_VERSION: '2.31.1'
+      CMAKE_VERSION: '4.4.2'
+      NINJA_VERSION: '1.13.2'
+      NASM_VERSION: '3.02'
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential unzip xz-utils
+
+          python -m pip install --upgrade pip
+          python -m pip install "conan==${CONAN_VERSION}"
+
+          cmake_archive="$RUNNER_TEMP/cmake-${CMAKE_VERSION}.tar.gz"
+          curl --fail --silent --show-error --location \
+            "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz" \
+            --output "$cmake_archive"
+          tar -xzf "$cmake_archive" -C "$RUNNER_TEMP"
+          cmake_bin="$RUNNER_TEMP/cmake-${CMAKE_VERSION}-linux-x86_64/bin"
+
+          ninja_archive="$RUNNER_TEMP/ninja-${NINJA_VERSION}.zip"
+          curl --fail --silent --show-error --location \
+            "https://github.com/ninja-build/ninja/releases/download/v${NINJA_VERSION}/ninja-linux.zip" \
+            --output "$ninja_archive"
+          mkdir -p "$RUNNER_TEMP/ninja-${NINJA_VERSION}"
+          unzip -q "$ninja_archive" -d "$RUNNER_TEMP/ninja-${NINJA_VERSION}"
+          ninja_bin="$RUNNER_TEMP/ninja-${NINJA_VERSION}"
+          chmod +x "$ninja_bin/ninja"
+
+          export PATH="$cmake_bin:$ninja_bin:$PATH"
+          echo "$cmake_bin" >> "$GITHUB_PATH"
+          echo "$ninja_bin" >> "$GITHUB_PATH"
+
+          nasm_archive="$RUNNER_TEMP/nasm-${NASM_VERSION}.tar.xz"
+          curl --fail --silent --show-error --location \
+            "https://www.nasm.us/pub/nasm/releasebuilds/${NASM_VERSION}/nasm-${NASM_VERSION}.tar.xz" \
+            --output "$nasm_archive"
+          tar -xJf "$nasm_archive" -C "$RUNNER_TEMP"
+          nasm_prefix="$RUNNER_TEMP/nasm-${NASM_VERSION}-install"
+          (
+            cd "$RUNNER_TEMP/nasm-${NASM_VERSION}"
+            ./configure --prefix="$nasm_prefix"
+            make -j"$(nproc)"
+            make install
+          )
+          nasm_bin="$nasm_prefix/bin"
+          export PATH="$nasm_bin:$PATH"
+          echo "$nasm_bin" >> "$GITHUB_PATH"
+
+          if command -v yasm >/dev/null 2>&1; then
+            echo "Yasm must not be available on PATH."
+            exit 1
+          fi
+
+          cmake --version
+          ninja --version
+          conan --version
+          nasm -version
+
+      - name: Cache Conan packages
+        uses: actions/cache@v6
+        with:
+          path: conan/cache
+          key: conan-linux-x86_64-${{ env.BUILD_TYPE }}-conan-${{ env.CONAN_VERSION }}-cmake-${{ env.CMAKE_VERSION }}-ninja-${{ env.NINJA_VERSION }}-nasm-${{ env.NASM_VERSION }}-${{ hashFiles('conanfile.py', 'conan/profile-override', 'conan/**', 'third-party/**') }}
+          restore-keys: |
+            conan-linux-x86_64-${{ env.BUILD_TYPE }}-conan-${{ env.CONAN_VERSION }}-cmake-${{ env.CMAKE_VERSION }}-ninja-${{ env.NINJA_VERSION }}-nasm-${{ env.NASM_VERSION }}-
+            conan-linux-x86_64-
+
+      - name: Index dependency recipes
+        shell: bash
+        run: ./bootstrap.sh setup
+
+      - name: Build ysm-lib
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$BUILD_TYPE" == "Debug" ]]; then
+            ./bootstrap.sh build native --debug
+          else
+            ./bootstrap.sh build native
+          fi
+
+      - name: Collect native library
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t libraries < <(find build -type f -name 'libysm.so' -print)
+          if (( ${#libraries[@]} != 1 )); then
+            echo "Expected exactly one libysm.so, found ${#libraries[@]}."
+            find build -type f -print
+            exit 1
+          fi
+
+          mkdir -p artifact
+          cp "${libraries[0]}" artifact/libysm.so
+
+          {
+            printf 'platform=linux-x86_64\n'
+            printf 'build_type=%s\n' "$BUILD_TYPE"
+            printf 'source=%s\n' "${libraries[0]}"
+            sha256sum artifact/libysm.so
+          } > artifact/BUILD.txt
+
+          find artifact -maxdepth 1 -type f -printf '%f %s bytes\n'
+          cat artifact/BUILD.txt
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ysm-native-linux-x86_64-${{ env.BUILD_TYPE }}
+          path: artifact
+          if-no-files-found: error
+          retention-days: 14

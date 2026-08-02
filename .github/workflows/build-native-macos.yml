@@ -1,0 +1,136 @@
+name: Build Native macOS arm64
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: CMake build type
+        required: true
+        default: Release
+        type: choice
+        options:
+          - Release
+          - Debug
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    env:
+      BUILD_TYPE: ${{ inputs.build_type }}
+      CONAN_VERSION: '2.31.1'
+      CMAKE_VERSION: '4.4.2'
+      NINJA_VERSION: '1.13.2'
+      NASM_VERSION: '3.02'
+      MACOSX_DEPLOYMENT_TARGET: '14.5'
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "arm64"
+
+          brew install ninja
+          python -m pip install --upgrade pip
+          python -m pip install "conan==${CONAN_VERSION}"
+
+          cmake_archive="$RUNNER_TEMP/cmake-${CMAKE_VERSION}.tar.gz"
+          curl --fail --silent --show-error --location \
+            "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-macos-universal.tar.gz" \
+            --output "$cmake_archive"
+          tar -xzf "$cmake_archive" -C "$RUNNER_TEMP"
+          cmake_bin="$RUNNER_TEMP/cmake-${CMAKE_VERSION}-macos-universal/CMake.app/Contents/bin"
+
+          export PATH="$cmake_bin:$PATH"
+          echo "$cmake_bin" >> "$GITHUB_PATH"
+
+          nasm_archive="$RUNNER_TEMP/nasm-${NASM_VERSION}.zip"
+          curl --fail --silent --show-error --location \
+            "https://www.nasm.us/pub/nasm/releasebuilds/${NASM_VERSION}/macosx/nasm-${NASM_VERSION}-macosx.zip" \
+            --output "$nasm_archive"
+          nasm_root="$RUNNER_TEMP/nasm-${NASM_VERSION}"
+          mkdir -p "$nasm_root"
+          unzip -q "$nasm_archive" -d "$nasm_root"
+          nasm_path="$(find "$nasm_root" -type f -name nasm -print -quit)"
+          test -n "$nasm_path"
+          chmod +x "$nasm_path"
+          nasm_bin="$(dirname "$nasm_path")"
+          export PATH="$nasm_bin:$PATH"
+          echo "$nasm_bin" >> "$GITHUB_PATH"
+
+          if command -v yasm >/dev/null 2>&1; then
+            echo "Yasm must not be available on PATH."
+            exit 1
+          fi
+
+          cmake --version
+          ninja --version
+          conan --version
+          nasm -version
+
+      - name: Cache Conan packages
+        uses: actions/cache@v6
+        with:
+          path: conan/cache
+          key: conan-macos-arm64-${{ env.BUILD_TYPE }}-conan-${{ env.CONAN_VERSION }}-cmake-${{ env.CMAKE_VERSION }}-ninja-${{ env.NINJA_VERSION }}-nasm-${{ env.NASM_VERSION }}-${{ hashFiles('conanfile.py', 'conan/profile-override', 'conan/**', 'third-party/**') }}
+          restore-keys: |
+            conan-macos-arm64-${{ env.BUILD_TYPE }}-conan-${{ env.CONAN_VERSION }}-cmake-${{ env.CMAKE_VERSION }}-ninja-${{ env.NINJA_VERSION }}-nasm-${{ env.NASM_VERSION }}-
+            conan-macos-arm64-
+
+      - name: Index dependency recipes
+        shell: bash
+        run: ./bootstrap.sh setup
+
+      - name: Build ysm-lib
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$BUILD_TYPE" == "Debug" ]]; then
+            ./bootstrap.sh build native --debug
+          else
+            ./bootstrap.sh build native
+          fi
+
+      - name: Collect native library
+        shell: bash
+        run: |
+          set -euo pipefail
+          count="$(find build -type f -name 'libysm.dylib' -print | wc -l | tr -d ' ')"
+          if [[ "$count" != "1" ]]; then
+            echo "Expected exactly one libysm.dylib, found $count."
+            find build -type f -print
+            exit 1
+          fi
+          library="$(find build -type f -name 'libysm.dylib' -print -quit)"
+
+          mkdir -p artifact
+          cp "$library" artifact/libysm.dylib
+
+          {
+            printf 'platform=macos-arm64\n'
+            printf 'build_type=%s\n' "$BUILD_TYPE"
+            printf 'source=%s\n' "$library"
+            shasum -a 256 artifact/libysm.dylib
+          } > artifact/BUILD.txt
+
+          find artifact -maxdepth 1 -type f -print
+          cat artifact/BUILD.txt
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ysm-native-macos-arm64-${{ env.BUILD_TYPE }}
+          path: artifact
+          if-no-files-found: error
+          retention-days: 14

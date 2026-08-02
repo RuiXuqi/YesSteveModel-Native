@@ -1,0 +1,209 @@
+name: Build Native Android arm64
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: CMake build type
+        required: true
+        default: Release
+        type: choice
+        options:
+          - Release
+          - Debug
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      BUILD_TYPE: ${{ inputs.build_type }}
+      CONAN_VERSION: '2.31.1'
+      CMAKE_VERSION: '4.4.2'
+      NINJA_VERSION: '1.13.2'
+      NASM_VERSION: '3.02'
+      ANDROID_API_LEVEL: '28'
+      ANDROID_NDK_VERSION: '29.0.14206865'
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+
+      - name: Set up Android SDK tools
+        uses: android-actions/setup-android@v4
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential unzip xz-utils
+
+          python -m pip install --upgrade pip
+          python -m pip install "conan==${CONAN_VERSION}"
+
+          cmake_archive="$RUNNER_TEMP/cmake-${CMAKE_VERSION}.tar.gz"
+          curl --fail --silent --show-error --location \
+            "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz" \
+            --output "$cmake_archive"
+          tar -xzf "$cmake_archive" -C "$RUNNER_TEMP"
+          cmake_bin="$RUNNER_TEMP/cmake-${CMAKE_VERSION}-linux-x86_64/bin"
+
+          ninja_archive="$RUNNER_TEMP/ninja-${NINJA_VERSION}.zip"
+          curl --fail --silent --show-error --location \
+            "https://github.com/ninja-build/ninja/releases/download/v${NINJA_VERSION}/ninja-linux.zip" \
+            --output "$ninja_archive"
+          mkdir -p "$RUNNER_TEMP/ninja-${NINJA_VERSION}"
+          unzip -q "$ninja_archive" -d "$RUNNER_TEMP/ninja-${NINJA_VERSION}"
+          ninja_bin="$RUNNER_TEMP/ninja-${NINJA_VERSION}"
+          chmod +x "$ninja_bin/ninja"
+
+          export PATH="$cmake_bin:$ninja_bin:$PATH"
+          echo "$cmake_bin" >> "$GITHUB_PATH"
+          echo "$ninja_bin" >> "$GITHUB_PATH"
+
+          nasm_archive="$RUNNER_TEMP/nasm-${NASM_VERSION}.tar.xz"
+          curl --fail --silent --show-error --location \
+            "https://www.nasm.us/pub/nasm/releasebuilds/${NASM_VERSION}/nasm-${NASM_VERSION}.tar.xz" \
+            --output "$nasm_archive"
+          tar -xJf "$nasm_archive" -C "$RUNNER_TEMP"
+          nasm_prefix="$RUNNER_TEMP/nasm-${NASM_VERSION}-install"
+          (
+            cd "$RUNNER_TEMP/nasm-${NASM_VERSION}"
+            ./configure --prefix="$nasm_prefix"
+            make -j"$(nproc)"
+            make install
+          )
+          nasm_bin="$nasm_prefix/bin"
+          export PATH="$nasm_bin:$PATH"
+          echo "$nasm_bin" >> "$GITHUB_PATH"
+
+          if command -v yasm >/dev/null 2>&1; then
+            echo "Yasm must not be available on PATH."
+            exit 1
+          fi
+
+          cmake --version
+          ninja --version
+          conan --version
+          nasm -version
+
+      - name: Install Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "platforms;android-${ANDROID_API_LEVEL}" "ndk;${ANDROID_NDK_VERSION}"
+
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:?ANDROID_SDK_ROOT and ANDROID_HOME are unset}}"
+          ndk_root="$sdk_root/ndk/${ANDROID_NDK_VERSION}"
+          test -x "$ndk_root/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android${ANDROID_API_LEVEL}-clang"
+
+          echo "ANDROID_NDK_ROOT=$ndk_root" >> "$GITHUB_ENV"
+
+      - name: Cache Conan packages
+        uses: actions/cache@v6
+        with:
+          path: conan/cache
+          key: conan-android-arm64-${{ env.BUILD_TYPE }}-conan-${{ env.CONAN_VERSION }}-cmake-${{ env.CMAKE_VERSION }}-ninja-${{ env.NINJA_VERSION }}-nasm-${{ env.NASM_VERSION }}-${{ hashFiles('conanfile.py', 'conan/profile-override', 'conan/**', 'third-party/**') }}
+          restore-keys: |
+            conan-android-arm64-${{ env.BUILD_TYPE }}-conan-${{ env.CONAN_VERSION }}-cmake-${{ env.CMAKE_VERSION }}-ninja-${{ env.NINJA_VERSION }}-nasm-${{ env.NASM_VERSION }}-
+            conan-android-arm64-
+
+      - name: Create Android Conan toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          toolchain="$RUNNER_TEMP/ysm-android-toolchain"
+          mkdir -p "$toolchain/conan" \
+            "$toolchain/tool/conan/bin" \
+            "$toolchain/tool/cmake/bin" \
+            "$toolchain/tool/ninja/bin"
+
+          ln -s "$(command -v conan)" "$toolchain/tool/conan/bin/conan"
+          ln -s "$(command -v cmake)" "$toolchain/tool/cmake/bin/cmake"
+          ln -s "$(command -v ninja)" "$toolchain/tool/ninja/bin/ninja"
+
+          build_home="$RUNNER_TEMP/conan-build-profile-home"
+          mkdir -p "$build_home"
+          CONAN_HOME="$build_home" conan profile detect --force --name build
+          cp "$build_home/profiles/build" "$toolchain/conan/linux-x64"
+
+          compiler="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android${ANDROID_API_LEVEL}-clang"
+          compiler_version="$($compiler --version | sed -n 's/.*clang version \([0-9][0-9]*\).*/\1/p' | head -n 1)"
+          test -n "$compiler_version"
+
+          cat > "$toolchain/conan/android-arm64" <<EOF
+          [settings]
+          os=Android
+          os.api_level=${ANDROID_API_LEVEL}
+          arch=armv8
+          compiler=clang
+          compiler.version=${compiler_version}
+          compiler.libcxx=c++_static
+          compiler.cppstd=23
+
+          [conf]
+          tools.android:ndk_path=${ANDROID_NDK_ROOT}
+          tools.cmake.cmaketoolchain:generator=Ninja
+          EOF
+
+          echo "YSM_TOOLCHAIN_PATH=$toolchain" >> "$GITHUB_ENV"
+          echo '--- Android host profile ---'
+          cat "$toolchain/conan/android-arm64"
+          echo '--- Linux build profile ---'
+          cat "$toolchain/conan/linux-x64"
+
+      - name: Index dependency recipes
+        shell: bash
+        run: ./bootstrap.sh setup --toolchain "$YSM_TOOLCHAIN_PATH"
+
+      - name: Build ysm-lib
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$BUILD_TYPE" == "Debug" ]]; then
+            ./bootstrap.sh build android-arm64 --toolchain "$YSM_TOOLCHAIN_PATH" --debug
+          else
+            ./bootstrap.sh build android-arm64 --toolchain "$YSM_TOOLCHAIN_PATH"
+          fi
+
+      - name: Collect native library
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t libraries < <(find build -type f -name 'libysm.so' -print)
+          if (( ${#libraries[@]} != 1 )); then
+            echo "Expected exactly one libysm.so, found ${#libraries[@]}."
+            find build -type f -print
+            exit 1
+          fi
+
+          mkdir -p artifact
+          cp "${libraries[0]}" artifact/libysm-android.so
+
+          {
+            printf 'platform=android-arm64\n'
+            printf 'build_type=%s\n' "$BUILD_TYPE"
+            printf 'source=%s\n' "${libraries[0]}"
+            printf 'android_api_level=%s\n' "$ANDROID_API_LEVEL"
+            printf 'android_ndk_version=%s\n' "$ANDROID_NDK_VERSION"
+            sha256sum artifact/libysm-android.so
+          } > artifact/BUILD.txt
+
+          find artifact -maxdepth 1 -type f -printf '%f %s bytes\n'
+          cat artifact/BUILD.txt
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ysm-native-android-arm64-${{ env.BUILD_TYPE }}
+          path: artifact
+          if-no-files-found: error
+          retention-days: 14
