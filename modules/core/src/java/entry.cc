@@ -98,8 +98,10 @@ internal::CollectAndValidateEntries(const EntryNode* head) {
         if (EntryKey(entries[i - 1]) == EntryKey(entries[i])) {
             const auto* entry = entries[i];
             return absl::AlreadyExistsError(std::format(
-                "Duplicate JNI entry: L{};{}{}", entry->class_name,
-                entry->method_name, entry->signature));
+                "Duplicate JNI entry: L{};{}{}",
+                std::string_view{entry->class_name},
+                std::string_view{entry->method_name},
+                std::string_view{entry->signature}));
         }
     }
     return entries;
@@ -155,7 +157,7 @@ absl::Status BindEntry(JNIEnv_* env) {
                 static_cast<jint>(binding.methods.size())) != JNI_OK) {
             return absl::InternalError(std::format(
                 "Failed to register native methods for class {}",
-                binding.class_name));
+                std::string_view{binding.class_name}));
         }
     }
 

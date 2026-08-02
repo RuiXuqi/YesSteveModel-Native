@@ -17,7 +17,7 @@ absl::StatusOr<jclass> FindClass(JNIEnv_* env, CStringView class_name) {
             env->ExceptionClear();
         }
         return absl::NotFoundError(
-            std::format("Class not found: {}", class_name));
+            std::format("Class not found: {}", std::string_view{class_name}));
     }
 
     auto class_ref = reinterpret_cast<jclass>(env->NewGlobalRef(clazz));
