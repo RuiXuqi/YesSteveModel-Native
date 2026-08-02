@@ -43,17 +43,13 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
-            build-essential clang libc++-dev libc++abi-dev lld unzip xz-utils
+            build-essential clang libc++-dev libc++abi-dev lld llvm unzip xz-utils
 
           export CC=clang
           export CXX=clang++
-          export AR=llvm-ar
-          export RANLIB=llvm-ranlib
           export LDFLAGS=-fuse-ld=lld
           echo "CC=clang" >> "$GITHUB_ENV"
           echo "CXX=clang++" >> "$GITHUB_ENV"
-          echo "AR=llvm-ar" >> "$GITHUB_ENV"
-          echo "RANLIB=llvm-ranlib" >> "$GITHUB_ENV"
           echo "LDFLAGS=-fuse-ld=lld" >> "$GITHUB_ENV"
 
           python -m pip install --upgrade pip
@@ -95,6 +91,16 @@ jobs:
           export PATH="$nasm_bin:$PATH"
           echo "$nasm_bin" >> "$GITHUB_PATH"
 
+          clang_major="$(clang --version | sed -n 's/.*clang version \([0-9][0-9]*\).*/\1/p' | head -n 1)"
+          llvm_ar="$(command -v llvm-ar || command -v "llvm-ar-${clang_major}")"
+          llvm_ranlib="$(command -v llvm-ranlib || command -v "llvm-ranlib-${clang_major}")"
+          test -x "$llvm_ar"
+          test -x "$llvm_ranlib"
+          export AR="$llvm_ar"
+          export RANLIB="$llvm_ranlib"
+          echo "AR=$llvm_ar" >> "$GITHUB_ENV"
+          echo "RANLIB=$llvm_ranlib" >> "$GITHUB_ENV"
+
           if command -v yasm >/dev/null 2>&1; then
             echo "Yasm must not be available on PATH."
             exit 1
@@ -105,6 +111,8 @@ jobs:
           clang --version
           clang++ --version
           ld.lld --version
+          "$llvm_ar" --version
+          "$llvm_ranlib" --version
           conan --version
           nasm -version
 
