@@ -199,7 +199,9 @@ YSM_INLINE SinCos SinCosApproxFmaAvx512(__m128 input) noexcept {
         _mm256_castsi128_si256(indices), cos_indices, 1);
     __m256 table_low = _mm256_load_ps(kSinTable);
     __m256 table_high = _mm256_load_ps(kSinTable + 8);
+#if !defined(_MSC_VER) && (defined(__GNUC__) || defined(__clang__))
     asm volatile("" : "+x"(table_low), "+x"(table_high));
+#endif
     const __m256 table_values = _mm256_permutex2var_ps(
         table_low, table_indices, table_high);
     const __m128 sin_k = _mm256_castps256_ps128(table_values);
