@@ -16,9 +16,11 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
         -fomit-frame-pointer
         LLVM
         -flto=thin
-        -funique-source-file-names
         -fsplit-lto-unit
     )
+    if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 22)
+        add_c_compile_options(LLVM -funique-source-file-names)
+    endif()
     add_cxx_compile_options(
         LLVM
         -fwhole-program-vtables
