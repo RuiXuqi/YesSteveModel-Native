@@ -47,8 +47,14 @@ jobs:
 
           export CC=clang
           export CXX=clang++
+          export AR=llvm-ar
+          export RANLIB=llvm-ranlib
+          export LDFLAGS=-fuse-ld=lld
           echo "CC=clang" >> "$GITHUB_ENV"
           echo "CXX=clang++" >> "$GITHUB_ENV"
+          echo "AR=llvm-ar" >> "$GITHUB_ENV"
+          echo "RANLIB=llvm-ranlib" >> "$GITHUB_ENV"
+          echo "LDFLAGS=-fuse-ld=lld" >> "$GITHUB_ENV"
 
           python -m pip install --upgrade pip
           python -m pip install "conan==${CONAN_VERSION}"
@@ -102,6 +108,41 @@ jobs:
           conan --version
           nasm -version
 
+      - name: Create Linux Conan toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          toolchain="$RUNNER_TEMP/ysm-linux-toolchain"
+          mkdir -p \
+            "$toolchain/conan" \
+            "$toolchain/tool/conan/bin" \
+            "$toolchain/tool/cmake/bin" \
+            "$toolchain/tool/ninja/bin"
+
+          ln -s "$(command -v conan)" "$toolchain/tool/conan/bin/conan"
+          ln -s "$(command -v cmake)" "$toolchain/tool/cmake/bin/cmake"
+          ln -s "$(command -v ninja)" "$toolchain/tool/ninja/bin/ninja"
+
+          compiler_version="$(clang++ --version | sed -n 's/.*clang version \([0-9][0-9]*\).*/\1/p' | head -n 1)"
+          test -n "$compiler_version"
+
+          cat > "$toolchain/conan/linux-x64" <<EOF
+          [settings]
+          os=Linux
+          arch=x86_64
+          compiler=clang
+          compiler.version=${compiler_version}
+          compiler.libcxx=libc++
+          compiler.cppstd=23
+
+          [conf]
+          tools.cmake.cmaketoolchain:generator=Ninja
+          EOF
+
+          echo "YSM_TOOLCHAIN_PATH=$toolchain" >> "$GITHUB_ENV"
+          echo '--- Linux Conan profile ---'
+          cat "$toolchain/conan/linux-x64"
+
       - name: Cache Conan packages
         uses: actions/cache@v6
         with:
@@ -113,16 +154,16 @@ jobs:
 
       - name: Index dependency recipes
         shell: bash
-        run: bash ./bootstrap.sh setup
+        run: bash ./bootstrap.sh setup --toolchain "$YSM_TOOLCHAIN_PATH"
 
       - name: Build ysm-lib
         shell: bash
         run: |
           set -euo pipefail
           if [[ "$BUILD_TYPE" == "Debug" ]]; then
-            bash ./bootstrap.sh build native --debug
+            bash ./bootstrap.sh build linux-x64 --toolchain "$YSM_TOOLCHAIN_PATH" --debug
           else
-            bash ./bootstrap.sh build native
+            bash ./bootstrap.sh build linux-x64 --toolchain "$YSM_TOOLCHAIN_PATH"
           fi
 
       - name: Collect native library
