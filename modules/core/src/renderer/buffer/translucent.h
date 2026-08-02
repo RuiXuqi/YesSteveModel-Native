@@ -1,7 +1,9 @@
 #pragma once
 
 #include <algorithm>
+#if defined(YSM_WINDOWS)
 #include <execution>
+#endif
 
 #include "buffer_managed.h"
 #include "non_copyable.h"
@@ -109,7 +111,7 @@ namespace ysm::renderer::buffer {
             if (sort) [[likely]] {
                 std::span span(reinterpret_cast<uint64_t *>(indices_.data()), indices_.size());
                 // 目前没有任何模型含大量半透明面
-#if !(defined YSM_ANDROID) && !(defined YSM_MACOS)
+#if defined(YSM_WINDOWS)
                 std::sort(std::execution::unseq, span.begin(), span.end());
 #else
                 std::ranges::sort(span.begin(), span.end());
