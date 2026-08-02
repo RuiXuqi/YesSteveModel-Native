@@ -165,16 +165,16 @@ jobs:
 
       - name: Index dependency recipes
         shell: bash
-        run: ./bootstrap.sh setup --toolchain "$YSM_TOOLCHAIN_PATH"
+        run: bash ./bootstrap.sh setup --toolchain "$YSM_TOOLCHAIN_PATH"
 
       - name: Build ysm-lib
         shell: bash
         run: |
           set -euo pipefail
           if [[ "$BUILD_TYPE" == "Debug" ]]; then
-            ./bootstrap.sh build android-arm64 --toolchain "$YSM_TOOLCHAIN_PATH" --debug
+            bash ./bootstrap.sh build android-arm64 --toolchain "$YSM_TOOLCHAIN_PATH" --debug
           else
-            ./bootstrap.sh build android-arm64 --toolchain "$YSM_TOOLCHAIN_PATH"
+            bash ./bootstrap.sh build android-arm64 --toolchain "$YSM_TOOLCHAIN_PATH"
           fi
 
       - name: Collect native library

@@ -104,16 +104,16 @@ jobs:
 
       - name: Index dependency recipes
         shell: bash
-        run: ./bootstrap.sh setup
+        run: bash ./bootstrap.sh setup
 
       - name: Build ysm-lib
         shell: bash
         run: |
           set -euo pipefail
           if [[ "$BUILD_TYPE" == "Debug" ]]; then
-            ./bootstrap.sh build native --debug
+            bash ./bootstrap.sh build native --debug
           else
-            ./bootstrap.sh build native
+            bash ./bootstrap.sh build native
           fi
 
       - name: Collect native library
