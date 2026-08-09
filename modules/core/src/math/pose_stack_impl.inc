@@ -17,6 +17,9 @@ namespace ysm::math {
 template <>
 YSM_SIMD_TARGET
 void PoseStack::RotateZYX<YSM_SIMD_TAG>(YSM_SIMD_TAG tag, float x, float y, float z) noexcept {
+    if (x == 0 && y == 0 && z == 0) {
+        return;
+    }
     vec3 angles{x, y, z};
     auto& current = poses_[pose_index_];
     mat4 rotation4;
@@ -32,6 +35,9 @@ void PoseStack::RotateZYX<YSM_SIMD_TAG>(YSM_SIMD_TAG tag, float x, float y, floa
 template <>
 YSM_SIMD_TARGET
 void PoseStack::Translate<YSM_SIMD_TAG>(YSM_SIMD_TAG, float x, float y, float z) noexcept {
+    if (x == 0 && y == 0 && z == 0) {
+        return;
+    }
     vec3 translation{x, y, z};
     glm_translate(poses_[pose_index_].pose, translation);
 }
@@ -39,6 +45,9 @@ void PoseStack::Translate<YSM_SIMD_TAG>(YSM_SIMD_TAG, float x, float y, float z)
 template <>
 YSM_SIMD_TARGET
 void PoseStack::Scale<YSM_SIMD_TAG>(YSM_SIMD_TAG, float x, float y, float z) noexcept {
+    if (x == 1 && y == 1 && z == 1) {
+        return;
+    }
     auto& current = poses_[pose_index_];
     vec3 scale{x, y, z};
     const bool uniform_scale = IsUniformScale(x, y, z);

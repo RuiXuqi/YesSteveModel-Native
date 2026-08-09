@@ -62,12 +62,21 @@ void ReferenceFacingCoefficient(const mat4 matrix, vec4 destination) {
 
 struct RenderStateInput {
     std::shared_ptr<bake::BakedModel> model;
-    std::vector<math::PoseStack::Pose> poses;
+    std::span<renderer::BonePose> poses;
     renderer::ModelState model_state;
 };
 
+void CopyPose(const math::PoseStack::Pose& source,
+              renderer::BonePose& destination) {
+    glm_mat4_copy(source.pose, destination.pose);
+    glm_mat3_copy(source.normal, destination.normal);
+    destination.uniform_scale = source.uniform_scale;
+    destination.tangent_orientation = source.tangent_orientation;
+    destination.normal_scale = source.normal_scale;
+}
+
 absl::StatusOr<std::unique_ptr<RenderStateInput>> MakeRenderStateInput(
-    std::span<const math::PoseStack::Pose> source_poses,
+    std::span<const renderer::BonePose> source_poses,
     std::span<const uint16_t> render_bone_indices,
     const bake::BakedModelBones& source_bones, bool has_pbr) {
     if (source_bones.list.size() != source_poses.size()) {
@@ -126,13 +135,14 @@ absl::StatusOr<std::unique_ptr<RenderStateInput>> MakeRenderStateInput(
         attribute.scale[1] = 1.0f;
         attribute.scale[2] = 1.0f;
     }
-    output->poses.resize(source_poses.size());
     auto extracted = output->model_state.Extract(
-        kGenericTag, output->model, attributes, output->poses.size(),
-        output->poses);
+        kGenericTag, output->model, attributes, source_poses.size());
     if (!extracted.ok()) {
         return extracted.status();
     }
+    const auto owned_poses = output->model_state.PoseView().bone_poses;
+    output->poses = {const_cast<renderer::BonePose*>(owned_poses.data()),
+                     owned_poses.size()};
     std::copy(source_poses.begin(), source_poses.end(), output->poses.begin());
     return output;
 }
@@ -165,9 +175,13 @@ TEST(RenderStateTest, Update) {
     params.projection[2][2] = -11.0f / 9.0f;
     params.projection[2][3] = -1.0f;
     params.projection[3][2] = -20.0f / 9.0f;
+    glm_mat3_identity(params.normal);
+    params.normal[0][0] = -0.5f;
+    params.normal[1][1] = 1.0f / 3.0f;
+    params.normal[2][2] = 2.0f;
     params.light = 0x1234abcd;
 
-    std::vector<math::PoseStack::Pose> bone_states(1);
+    std::vector<renderer::BonePose> bone_states(1);
     const std::vector<uint16_t> bone_indices{0};
     renderer::ModelPoseView source{bone_states, bone_indices};
     glm_mat4_identity(bone_states[0].pose);
@@ -223,6 +237,7 @@ TEST(RenderStateTest, Update) {
 
     {
         glm_mat4_identity(params.model);
+        glm_mat3_identity(params.normal);
         glm_mat4_identity(params.projection);
         params.projection[1][1] = -1.0f;
         ASSERT_TRUE(UpdateRenderState(transformed, params, **input).ok());
@@ -240,6 +255,7 @@ TEST(RenderStateTest, Update) {
     {
         glm_mat4_identity(params.model);
         params.model[1][1] = 0.0f;
+        glm_mat3_zero(params.normal);
         ASSERT_TRUE(UpdateRenderState(transformed, params, **input).ok());
         const auto& state = transformed.GetBoneState(0);
         const auto& normal = state.normal;
@@ -255,6 +271,96 @@ TEST(RenderStateTest, Update) {
         params.model[0][0] = std::numeric_limits<float>::infinity();
         EXPECT_EQ(UpdateRenderState(transformed, params, **input).code(),
                   absl::StatusCode::kInvalidArgument);
+    }
+}
+
+TEST(RenderStateTest, CombinesBoneColorTransparencyAndGlow) {
+    renderer::RenderParameters params{};
+    glm_mat4_identity(params.model);
+    glm_mat4_identity(params.view);
+    glm_mat4_identity(params.projection);
+    glm_mat3_identity(params.normal);
+    params.light = 0x1234abcd;
+    params.color.components.r = 255;
+    params.color.components.g = 255;
+    params.color.components.b = 255;
+    params.color.components.a = 128;
+
+    std::vector<renderer::BonePose> poses(1);
+    poses[0].color.components.r = 10;
+    poses[0].color.components.g = 20;
+    poses[0].color.components.b = 30;
+    poses[0].color.components.a = 64;
+    poses[0].glowing = 0xFF;
+    const std::vector<uint16_t> bone_indices{0};
+    bake::BakedModelBones bones;
+    bones.list.resize(1);
+    bones.list[0].solid = true;
+    auto input = MakeRenderStateInput(poses, bone_indices, bones, false);
+    ASSERT_TRUE(input.ok()) << input.status();
+
+    renderer::RenderState transformed;
+    ASSERT_TRUE(UpdateRenderState(transformed, params, **input).ok());
+    const auto& state = transformed.GetBoneState(0);
+    renderer::Color opaque{.packed = state.packed_opaque_color};
+    renderer::Color translucent{.packed = state.packed_translucent_color};
+    EXPECT_EQ(opaque.components.r, 10);
+    EXPECT_EQ(opaque.components.g, 20);
+    EXPECT_EQ(opaque.components.b, 30);
+    EXPECT_EQ(opaque.components.a, 128);
+    EXPECT_EQ(translucent.components.r, opaque.components.r);
+    EXPECT_EQ(translucent.components.g, opaque.components.g);
+    EXPECT_EQ(translucent.components.b, opaque.components.b);
+    EXPECT_EQ(translucent.components.a, 32);
+    EXPECT_EQ(state.packed_light, params.light);
+
+    (*input)->poses[0].color.components.r = 255;
+    (*input)->poses[0].color.components.g = 255;
+    (*input)->poses[0].color.components.b = 255;
+    ASSERT_TRUE(UpdateRenderState(transformed, params, **input).ok());
+    renderer::Color white{
+        .packed = transformed.GetBoneState(0).packed_opaque_color};
+    EXPECT_EQ(white.components.r, 255);
+    EXPECT_EQ(white.components.g, 255);
+    EXPECT_EQ(white.components.b, 255);
+
+    (*input)->poses[0].color.components.r = 255;
+    (*input)->poses[0].color.components.g = 0;
+    (*input)->poses[0].color.components.b = 0;
+    ASSERT_TRUE(UpdateRenderState(transformed, params, **input).ok());
+    renderer::Color red{
+        .packed = transformed.GetBoneState(0).packed_opaque_color};
+    EXPECT_EQ(red.components.r, 255);
+    EXPECT_EQ(red.components.g, 0);
+    EXPECT_EQ(red.components.b, 0);
+
+    (*input)->poses[0].color.components.r = 0;
+    ASSERT_TRUE(UpdateRenderState(transformed, params, **input).ok());
+    renderer::Color black{
+        .packed = transformed.GetBoneState(0).packed_opaque_color};
+    EXPECT_EQ(black.components.r, 0);
+    EXPECT_EQ(black.components.g, 0);
+    EXPECT_EQ(black.components.b, 0);
+
+    params.color.components.r = 200;
+    params.color.components.g = 100;
+    params.color.components.b = 50;
+    (*input)->poses[0].color.components.r = 128;
+    (*input)->poses[0].color.components.g = 255;
+    (*input)->poses[0].color.components.b = 64;
+    ASSERT_TRUE(UpdateRenderState(transformed, params, **input).ok());
+    renderer::Color multiplied{
+        .packed = transformed.GetBoneState(0).packed_opaque_color};
+    EXPECT_EQ(multiplied.components.r, 100);
+    EXPECT_EQ(multiplied.components.g, 100);
+    EXPECT_EQ(multiplied.components.b, 13);
+
+    for (const uint8_t level : {uint8_t{0}, uint8_t{15}}) {
+        (*input)->poses[0].glowing = level;
+        ASSERT_TRUE(UpdateRenderState(transformed, params, **input).ok());
+        EXPECT_EQ(transformed.GetBoneState(0).packed_light,
+                  (static_cast<uint32_t>(level) << 4) |
+                      (static_cast<uint32_t>(level) << 20));
     }
 }
 
@@ -275,16 +381,17 @@ TEST(RenderStateTest, FactorizesFacingAcrossBonePose) {
     params.projection[2][2] = -11.0f / 9.0f;
     params.projection[2][3] = -1.0f;
     params.projection[3][2] = -20.0f / 9.0f;
+    glm_mat3_identity(params.normal);
 
     simd::GenericTag tag;
 
-    std::vector<math::PoseStack::Pose> bone_states(3);
+    std::vector<renderer::BonePose> bone_states(3);
     {
         math::PoseStack stack;
         stack.Translate(tag, 0.25f, -0.5f, 1.0f);
         stack.RotateZYX(tag, 0.2f, -0.4f, 0.3f);
         stack.Scale(tag, -2.0f, 2.0f, 2.0f);
-        stack.Last().CopyTo(bone_states[0]);
+        CopyPose(stack.Last(), bone_states[0]);
     }
     {
         math::PoseStack stack;
@@ -292,14 +399,14 @@ TEST(RenderStateTest, FactorizesFacingAcrossBonePose) {
         stack.Scale(tag, 3.0f, 3.0f, 3.0f);
         stack.RotateZYX(simd::GenericTag{}, -0.1f, 0.5f, -0.25f);
         stack.Scale(tag, -1.0f, 2.0f, 0.5f);
-        stack.Last().CopyTo(bone_states[1]);
+        CopyPose(stack.Last(), bone_states[1]);
     }
     {
         math::PoseStack stack;
         stack.Translate(tag, 0.5f, 1.0f, -2.0f);
         stack.RotateZYX(simd::GenericTag{}, 0.6f, 0.15f, -0.35f);
         stack.Scale(tag, 0.5f, 1.5f, 2.5f);
-        stack.Last().CopyTo(bone_states[2]);
+        CopyPose(stack.Last(), bone_states[2]);
     }
 
     const std::vector<uint16_t> indices{0, 1, 2};
@@ -333,7 +440,7 @@ TEST(RenderStateTest, FactorizesFacingAcrossBonePose) {
     }
 }
 
-TEST(RenderStateTest, DerivesOuterNormalFromPoseMatrix) {
+TEST(RenderStateTest, UsesProvidedOuterNormalMatrix) {
     renderer::RenderParameters params{};
     glm_mat4_identity(params.model);
     params.model[0][0] = 2.0f;
@@ -342,8 +449,14 @@ TEST(RenderStateTest, DerivesOuterNormalFromPoseMatrix) {
     params.model[2][2] = -4.0f;
     glm_mat4_identity(params.view);
     glm_mat4_identity(params.projection);
+    const mat3 expected{
+        {0.5f, -0.125f, 0.0f},
+        {0.0f, 1.0f / 3.0f, 0.0f},
+        {0.0f, 0.0f, -0.25f},
+    };
+    glm_mat3_copy(expected, params.normal);
 
-    std::vector<math::PoseStack::Pose> bone_states(1);
+    std::vector<renderer::BonePose> bone_states(1);
     glm_mat4_identity(bone_states[0].pose);
     glm_mat3_identity(bone_states[0].normal);
     const std::vector<uint16_t> indices{0};
@@ -355,11 +468,6 @@ TEST(RenderStateTest, DerivesOuterNormalFromPoseMatrix) {
     renderer::RenderState transformed;
     ASSERT_TRUE(UpdateRenderState(transformed, params, **input).ok());
 
-    mat3 linear;
-    mat3 expected;
-    glm_mat4_pick3(params.model, linear);
-    glm_mat3_inv(linear, expected);
-    glm_mat3_transpose(expected);
     for (size_t column = 0; column < 3; ++column) {
         for (size_t row = 0; row < 3; ++row) {
             EXPECT_NEAR(transformed.GetBoneState(0).normal[column][row],
@@ -368,7 +476,7 @@ TEST(RenderStateTest, DerivesOuterNormalFromPoseMatrix) {
     }
 }
 
-TEST(RenderStateTest, PreNormalizesConformalOuterDirectionMatrix) {
+TEST(RenderStateTest, UsesPreNormalizedConformalOuterDirectionMatrix) {
     renderer::RenderParameters params{};
     glm_mat4_identity(params.model);
     params.model[0][0] = 0.0f;
@@ -378,8 +486,14 @@ TEST(RenderStateTest, PreNormalizesConformalOuterDirectionMatrix) {
     params.model[2][2] = 2.0f;
     glm_mat4_identity(params.view);
     glm_mat4_identity(params.projection);
+    const mat3 expected{
+        {0.0f, 1.0f, 0.0f},
+        {-1.0f, 0.0f, 0.0f},
+        {0.0f, 0.0f, 1.0f},
+    };
+    glm_mat3_copy(expected, params.normal);
 
-    std::vector<math::PoseStack::Pose> bone_states(1);
+    std::vector<renderer::BonePose> bone_states(1);
     glm_mat4_identity(bone_states[0].pose);
     glm_mat3_identity(bone_states[0].normal);
     const std::vector<uint16_t> indices{0};
@@ -393,11 +507,6 @@ TEST(RenderStateTest, PreNormalizesConformalOuterDirectionMatrix) {
     ASSERT_TRUE(UpdateRenderState(transformed, params, **input).ok());
     const auto& state = transformed.GetBoneState(0);
     EXPECT_TRUE(state.uniform_scale);
-    const mat3 expected{
-        {0.0f, 1.0f, 0.0f},
-        {-1.0f, 0.0f, 0.0f},
-        {0.0f, 0.0f, 1.0f},
-    };
     for (size_t column = 0; column < 3; ++column) {
         for (size_t row = 0; row < 3; ++row) {
             EXPECT_FLOAT_EQ(state.normal[column][row], expected[column][row]);
@@ -417,8 +526,9 @@ TEST(RenderStateTest, CombinesOuterAndBoneTangentOrientation) {
     params.model[2][2] = 2.0f;
     glm_mat4_identity(params.view);
     glm_mat4_identity(params.projection);
+    glm_mat3_identity(params.normal);
 
-    std::vector<math::PoseStack::Pose> bone_states(1);
+    std::vector<renderer::BonePose> bone_states(1);
     glm_mat4_identity(bone_states[0].pose);
     glm_mat3_identity(bone_states[0].normal);
     bone_states[0].tangent_orientation = -1.0f;
@@ -442,8 +552,9 @@ TEST(RenderStateTest, NonPbrStillTracksNonUniformScaleForNormals) {
     params.model[1][1] = 3.0f;
     glm_mat4_identity(params.view);
     glm_mat4_identity(params.projection);
+    glm_mat3_identity(params.normal);
 
-    std::vector<math::PoseStack::Pose> bone_states(1);
+    std::vector<renderer::BonePose> bone_states(1);
     glm_mat4_identity(bone_states[0].pose);
     glm_mat3_identity(bone_states[0].normal);
     bone_states[0].tangent_orientation = -1.0f;
@@ -465,12 +576,13 @@ TEST(RenderStateTest, SplitRangesMatchSerialUpdate) {
     glm_mat4_identity(params.model);
     glm_mat4_identity(params.view);
     glm_mat4_identity(params.projection);
+    glm_mat3_identity(params.normal);
     params.model[0][0] = -1.25f;
     params.model[1][1] = 0.75f;
     params.model[3][2] = -2.0f;
     params.light = 0x12345678;
 
-    std::vector<math::PoseStack::Pose> poses(4);
+    std::vector<renderer::BonePose> poses(4);
     for (size_t index = 0; index < poses.size(); ++index) {
         math::PoseStack stack;
         stack.Translate(simd::GenericTag{}, static_cast<float>(index) * 0.25f,
@@ -479,7 +591,7 @@ TEST(RenderStateTest, SplitRangesMatchSerialUpdate) {
         stack.RotateZYX(simd::GenericTag{}, static_cast<float>(index) * 0.03f,
                         static_cast<float>(index) * -0.02f,
                         static_cast<float>(index) * 0.01f);
-        stack.Last().CopyTo(poses[index]);
+        CopyPose(stack.Last(), poses[index]);
     }
     const std::vector<uint16_t> indices{0, 1, 2, 3};
     bake::BakedModelBones bones;

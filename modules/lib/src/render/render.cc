@@ -5,6 +5,7 @@
 #include "java/buffer.h"
 #include "java/entry.h"
 #include "java/opaque_ptr.h"
+#include "log.h"
 #include "scope_guard.h"
 
 namespace ysm::lib::render {

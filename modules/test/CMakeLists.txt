@@ -8,7 +8,7 @@ target_compile_definitions(ysm-test PRIVATE
         YSM_ENABLE_DEBUG_LOG=1
         ABSL_MAX_VLOG_VERBOSITY=2
 )
-target_link_libraries(ysm-test PRIVATE ysm-core GTest::gtest)
+target_link_libraries(ysm-test PRIVATE ysm-core GTest::gtest flatbuffers)
 
 include(GoogleTest)
 if(CMAKE_CROSSCOMPILING)

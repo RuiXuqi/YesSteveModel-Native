@@ -8,8 +8,8 @@
 #include <cryptopp/md5.h>
 #include <cryptopp/modes.h>
 
-#include "../algo/compress.h"
-#include "../algo/java_random.h"
+#include "algo/compress.h"
+#include "algo/java_random.h"
 #include "algo/base64.h"
 
 namespace ysm::codec {

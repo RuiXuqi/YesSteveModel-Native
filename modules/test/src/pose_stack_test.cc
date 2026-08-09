@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 
-#include "../../core/src/math/pose_stack.h"
+#include "math/pose_stack.h"
 
 namespace ysm::test {
 TEST(PoseStackTest, MaintainsDirectionStateAcrossHierarchy) {

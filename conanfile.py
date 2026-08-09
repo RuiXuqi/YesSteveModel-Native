@@ -41,6 +41,7 @@ class YsmConan(ConanFile):
         self.requires("jni/8.0.0@ysm/stable")
         self.requires("yalantinglibs/0.6.1@ysm/stable")
         self.requires("flatbuffers/25.12.19-2026-02-06@ysm/stable")
+        self.requires("tracy/0.13.1@ysm/stable")
 
     def build_requirements(self):
         self.test_requires("benchmark/1.9.5@ysm/stable")

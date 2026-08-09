@@ -27,8 +27,7 @@ constexpr float kPoseTolerance = 0.00001f;
 using ExtractOutput = renderer::ModelState::ExtractOutput;
 using ExtractKernel = absl::StatusOr<ExtractOutput> (*)(
     renderer::ModelState&, const std::shared_ptr<bake::BakedModel>&,
-    std::span<const renderer::BoneAttribute>, size_t,
-    std::span<math::PoseStack::Pose>);
+    std::span<const renderer::BoneAttribute>, size_t);
 
 struct Variant {
     std::string_view isa;
@@ -42,10 +41,9 @@ YSM_NOINLINE absl::StatusOr<ExtractOutput> ExtractGeneric(
     renderer::ModelState& state,
     const std::shared_ptr<bake::BakedModel>& model,
     std::span<const renderer::BoneAttribute> attributes,
-    size_t locator_capacity,
-    std::span<math::PoseStack::Pose> poses) {
+    size_t locator_capacity) {
     return state.Extract(simd::Tag<simd::Type::kNone>{}, model, attributes,
-                         locator_capacity, poses);
+                         locator_capacity);
 }
 
 #ifdef YSM_X64
@@ -54,30 +52,27 @@ YSM_NOINLINE absl::StatusOr<ExtractOutput> ExtractSse41(
     renderer::ModelState& state,
     const std::shared_ptr<bake::BakedModel>& model,
     std::span<const renderer::BoneAttribute> attributes,
-    size_t locator_capacity,
-    std::span<math::PoseStack::Pose> poses) {
+    size_t locator_capacity) {
     return state.Extract(simd::Tag<simd::Type::SSE41>{}, model, attributes,
-                         locator_capacity, poses);
+                         locator_capacity);
 }
 
 YSM_NOINLINE absl::StatusOr<ExtractOutput> ExtractAvx2(
     renderer::ModelState& state,
     const std::shared_ptr<bake::BakedModel>& model,
     std::span<const renderer::BoneAttribute> attributes,
-    size_t locator_capacity,
-    std::span<math::PoseStack::Pose> poses) {
+    size_t locator_capacity) {
     return state.Extract(simd::Tag<simd::Type::AVX2>{}, model, attributes,
-                         locator_capacity, poses);
+                         locator_capacity);
 }
 
 YSM_NOINLINE absl::StatusOr<ExtractOutput> ExtractAvx512(
     renderer::ModelState& state,
     const std::shared_ptr<bake::BakedModel>& model,
     std::span<const renderer::BoneAttribute> attributes,
-    size_t locator_capacity,
-    std::span<math::PoseStack::Pose> poses) {
+    size_t locator_capacity) {
     return state.Extract(simd::Tag<simd::Type::AVX512>{}, model, attributes,
-                         locator_capacity, poses);
+                         locator_capacity);
 }
 
 std::vector<Variant> SupportedVariants() {
@@ -98,10 +93,9 @@ YSM_NOINLINE absl::StatusOr<ExtractOutput> ExtractNeon(
     renderer::ModelState& state,
     const std::shared_ptr<bake::BakedModel>& model,
     std::span<const renderer::BoneAttribute> attributes,
-    size_t locator_capacity,
-    std::span<math::PoseStack::Pose> poses) {
+    size_t locator_capacity) {
     return state.Extract(simd::Tag<simd::Type::NEON>{}, model, attributes,
-                         locator_capacity, poses);
+                         locator_capacity);
 }
 
 std::vector<Variant> SupportedVariants() {
@@ -209,17 +203,15 @@ Frames MakeFrames(size_t bone_count) {
 struct Fixture {
     explicit Fixture(size_t bone_count)
         : model(MakeModel(bone_count)),
-          frames(MakeFrames(bone_count)),
-          poses(bone_count) {}
+          frames(MakeFrames(bone_count)) {}
 
     std::shared_ptr<bake::BakedModel> model;
     Frames frames;
-    std::vector<math::PoseStack::Pose> poses;
     renderer::ModelState state;
 };
 
-float MaxPoseDifference(const math::PoseStack::Pose& left,
-                        const math::PoseStack::Pose& right) noexcept {
+float MaxPoseDifference(const renderer::BonePose& left,
+                        const renderer::BonePose& right) noexcept {
     float difference = 0.0f;
     for (size_t column = 0; column < 4; ++column) {
         for (size_t row = 0; row < 4; ++row) {
@@ -248,14 +240,14 @@ float MaxPoseDifference(const math::PoseStack::Pose& left,
 bool PrepareSteadyState(benchmark::State& benchmark_state,
                         ExtractKernel extract, Fixture& fixture) {
     const auto first = extract(fixture.state, fixture.model, fixture.frames[0],
-                               fixture.poses.size(), fixture.poses);
+                                fixture.frames[0].size());
     if (!first.ok()) {
         const std::string error = first.status().ToString();
         benchmark_state.SkipWithError(error.c_str());
         return false;
     }
     const auto second = extract(fixture.state, fixture.model, fixture.frames[1],
-                                fixture.poses.size(), fixture.poses);
+                                 fixture.frames[1].size());
     if (!second.ok()) {
         const std::string error = second.status().ToString();
         benchmark_state.SkipWithError(error.c_str());
@@ -280,15 +272,16 @@ void SteadyStateExtract(benchmark::State& benchmark_state,
     for (auto _ : benchmark_state) {
         auto output =
             extract(fixture.state, fixture.model,
-                    fixture.frames[frame % fixture.frames.size()],
-                    fixture.poses.size(), fixture.poses);
+                     fixture.frames[frame % fixture.frames.size()],
+                     fixture.frames[0].size());
         if (!output.ok()) {
             const std::string error = output.status().ToString();
             benchmark_state.SkipWithError(error.c_str());
             break;
         }
         benchmark::DoNotOptimize(output->vertex_count);
-        benchmark::DoNotOptimize(fixture.poses.back().pose[0][0]);
+        benchmark::DoNotOptimize(
+            fixture.state.PoseView().bone_poses.back().pose[0][0]);
         ++frame;
     }
     benchmark_state.SetItemsProcessed(benchmark_state.iterations() *
@@ -302,7 +295,7 @@ bool ValidateModelStateExtractBenchmarks() {
     Fixture reference(kValidationBoneCount);
     const auto expected =
         ExtractGeneric(reference.state, reference.model, reference.frames[3],
-                       reference.poses.size(), reference.poses);
+                       reference.frames[3].size());
     if (!expected.ok()) {
         std::fprintf(stderr,
                      "ModelState Extract generic validation failed: %s\n",
@@ -314,7 +307,7 @@ bool ValidateModelStateExtractBenchmarks() {
         Fixture actual(kValidationBoneCount);
         const auto output =
             variant.extract(actual.state, actual.model, actual.frames[3],
-                            actual.poses.size(), actual.poses);
+                            actual.frames[3].size());
         if (!output.ok()) {
             std::fprintf(stderr,
                          "ModelState Extract %.*s validation failed: %s\n",
@@ -334,7 +327,8 @@ bool ValidateModelStateExtractBenchmarks() {
         for (size_t bone_index = 0; bone_index < kValidationBoneCount;
              ++bone_index) {
             const float difference = MaxPoseDifference(
-                reference.poses[bone_index], actual.poses[bone_index]);
+                reference.state.PoseView().bone_poses[bone_index],
+                actual.state.PoseView().bone_poses[bone_index]);
             if (difference > kPoseTolerance) {
                 std::fprintf(stderr,
                              "ModelState Extract %.*s validation failed at "

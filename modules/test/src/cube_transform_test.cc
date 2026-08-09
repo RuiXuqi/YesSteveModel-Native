@@ -592,9 +592,9 @@ TEST(CubeTransformTest, GenericCubeTransform) {
     EXPECT_FLOAT_EQ(output.pos[0][3], 11.0f);
     EXPECT_FLOAT_EQ(output.pos[1][3], 16.0f);
     EXPECT_FLOAT_EQ(output.pos[2][3], -11.0f);
-    EXPECT_EQ(PackedByte(output.normal[0], 2), 0x20);
-    EXPECT_EQ(PackedByte(output.normal[1], 2), 0x20);
-    EXPECT_EQ(PackedByte(output.normal[2], 0), 0xc0);
+    EXPECT_EQ(PackedByte(output.normal[0], 2), 0x7f);
+    EXPECT_EQ(PackedByte(output.normal[1], 2), 0x7f);
+    EXPECT_EQ(PackedByte(output.normal[2], 0), 0x81);
     EXPECT_FALSE(output.back_face[0]);
     EXPECT_TRUE(output.back_face[1]);
     EXPECT_TRUE(output.back_face[2]);

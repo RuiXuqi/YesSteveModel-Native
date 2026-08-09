@@ -1,20 +1,47 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <type_traits>
 #include <vector>
 
 #include <absl/status/statusor.h>
 
-#include "math/pose_stack.h"
 #include "bake/baked_model.h"
 #include "bone_attribute.h"
+#include "color.h"
+#include "math/pose_stack.h"
 #include "schedule.h"
 
 namespace ysm::renderer {
+struct alignas(64) BonePose {
+    mat4 pose = GLM_MAT4_IDENTITY_INIT;
+    mat3 normal = GLM_MAT3_IDENTITY_INIT;
+
+    bool uniform_scale = true;
+    float tangent_orientation = 1.0f;
+    float normal_scale = 1.0f;
+
+    Color color{.packed = 0xFFFFFFFF};
+    uint8_t glowing = 0xFFu;
+};
+
+static_assert(std::is_standard_layout_v<BonePose>);
+static_assert(std::is_trivially_copyable_v<BonePose>);
+static_assert(alignof(BonePose) == 64);
+static_assert(sizeof(bool) == 1);
+static_assert(offsetof(BonePose, normal) == 64);
+static_assert(offsetof(BonePose, uniform_scale) == 100);
+static_assert(offsetof(BonePose, tangent_orientation) == 104);
+static_assert(offsetof(BonePose, normal_scale) == 108);
+static_assert(offsetof(BonePose, color) == 112);
+static_assert(offsetof(BonePose, glowing) == 116);
+static_assert(sizeof(BonePose) == 128);
+
 struct ModelPoseView {
-    std::span<const math::PoseStack::Pose> bone_poses;
+    std::span<const BonePose> bone_poses;
     std::span<const uint16_t> render_bone_indices;
 };
 
@@ -31,8 +58,7 @@ class ModelState {
         SimdTag tag,
         const std::shared_ptr<bake::BakedModel>& baked_model,
         std::span<const BoneAttribute> bone_attributes,
-        size_t locator_capacity,
-        std::span<math::PoseStack::Pose> bone_pose_buffer);
+        size_t locator_capacity);
 
     [[nodiscard]] std::span<const uint16_t> StagedLocatorBoneIndices(
         size_t count) const {
@@ -57,7 +83,7 @@ class ModelState {
 
    private:
     std::shared_ptr<bake::BakedModel> baked_model_;
-    std::span<const math::PoseStack::Pose> bone_poses_;
+    std::vector<BonePose> bone_poses_;
     std::vector<uint16_t> render_bone_indices_;
     std::vector<uint16_t> locator_bone_indices_scratch_;
     RenderSchedule schedule_;

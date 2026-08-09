@@ -1,3 +1,4 @@
+#include <array>
 #include <cstdint>
 #include <span>
 
@@ -15,34 +16,20 @@ YSM_JNI_ENTRY(
 }
 
 YSM_JNI_ENTRY(
-    "Lcom/elfmcys/ysm/natives/render/NativeModelState;nExtract(JJ[F[SJJ)J",
+    "Lcom/elfmcys/ysm/natives/render/NativeModelState;nExtract(JJ[F[S[J)Z",
     (state_ptr, baked_model_ptr, bone_attributes_array,
-     locator_bone_indices_array, bone_pose_ptr, bone_pose_capacity),
-    jlong{-1}) {
+     locator_bone_indices_array, output_array)) {
     YSM_DECLARE_OR_RETURN(
         state, java::CastOpaquePtr<renderer::ModelState>(state_ptr));
     YSM_DECLARE_OR_RETURN(
         baked_model,
         java::CastOpaquePtr<bake::BakedModel>(baked_model_ptr));
-    YSM_ASSERT(env != nullptr && locator_bone_indices_array != nullptr,
-               absl::InvalidArgumentError("Invalid locator buffer."));
+    YSM_ASSERT(env != nullptr && locator_bone_indices_array != nullptr &&
+                   output_array != nullptr,
+               absl::InvalidArgumentError("Invalid ModelState output."));
     const auto locator_capacity =
         env->GetArrayLength(locator_bone_indices_array);
-    YSM_ASSERT(
-        bone_pose_ptr != 0 && bone_pose_capacity >= 0 &&
-            static_cast<uint64_t>(bone_pose_ptr) %
-                    alignof(math::PoseStack::Pose) ==
-                0 &&
-            static_cast<uint64_t>(bone_pose_capacity) %
-                    sizeof(math::PoseStack::Pose) ==
-                0,
-        absl::InvalidArgumentError("Invalid bone pose buffer."));
-
-    auto* pose = reinterpret_cast<math::PoseStack::Pose*>(
-        static_cast<uintptr_t>(bone_pose_ptr));
-    const auto pose_count = static_cast<size_t>(bone_pose_capacity) /
-                            sizeof(math::PoseStack::Pose);
-    jlong packed_output;
+    renderer::ModelState::ExtractOutput output;
     size_t locator_count;
     {
         YSM_DECLARE_OR_RETURN(
@@ -60,26 +47,38 @@ YSM_JNI_ENTRY(
         const auto attribute_count =
             bone_attributes.size() / renderer::BoneAttribute::kFloatCount;
         YSM_DECLARE_OR_RETURN(
-            output,
+            extracted,
             magic_enum::enum_switch(
                 [&](auto kSimdType) ->
                     absl::StatusOr<renderer::ModelState::ExtractOutput> {
                     static constexpr simd::Tag<kSimdType> tag;
                     return state->Extract(
                         tag, baked_model, {attributes, attribute_count},
-                        static_cast<size_t>(locator_capacity),
-                        {pose, pose_count});
+                        static_cast<size_t>(locator_capacity));
                 },
                 simd::kSupported));
-        locator_count = output.locator_count;
-        packed_output = static_cast<jlong>(output.vertex_count) |
-                        (static_cast<jlong>(output.locator_count) << 32);
+        output = extracted;
+        locator_count = extracted.locator_count;
     }
     YSM_ASSERT(locator_count <= static_cast<size_t>(locator_capacity),
                absl::InternalError("Invalid locator count."));
     YSM_RETURN_IF_ERROR(java::WriteShortArray<true>(
         env, locator_bone_indices_array,
         state->StagedLocatorBoneIndices(locator_count)));
-    return packed_output;
+    const auto pose_view = state->PoseView();
+    const auto bone_poses = pose_view.bone_poses;
+    const auto render_bone_indices = pose_view.render_bone_indices;
+    const auto pack_counts = [](uint32_t low, uint32_t high) {
+        return static_cast<jlong>((static_cast<uint64_t>(high) << 32) | low);
+    };
+    const std::array<jlong, 4> packed_output{
+        reinterpret_cast<jlong>(bone_poses.data()),
+        reinterpret_cast<jlong>(render_bone_indices.data()),
+        pack_counts(static_cast<uint32_t>(render_bone_indices.size()),
+                    output.locator_count),
+        pack_counts(output.vertex_count,
+                    state->Schedule().translucent_vertex_count),
+    };
+    return java::WriteLongArray<true>(env, output_array, packed_output);
 }
 }  // namespace ysm::lib::render

@@ -5,6 +5,8 @@ add_library(ysm-core STATIC ${coreCodeFiles})
 unset(coreCodeFiles)
 set_property(TARGET ysm-core PROPERTY CXX_STANDARD 23)
 target_include_directories(ysm-core PUBLIC src)
+
+# debug logging
 target_compile_definitions(ysm-core PUBLIC $<$<CONFIG:Debug>:YSM_DEBUG=1>)
 if (YSM_ENABLE_DEBUG_LOG)
     target_compile_definitions(ysm-core PRIVATE
@@ -15,8 +17,10 @@ else ()
             YSM_ENABLE_DEBUG_LOG=0
             ABSL_MAX_VLOG_VERBOSITY=0)
 endif ()
+
+# underlying deps
 target_link_libraries(ysm-core PRIVATE
-        absl::inlined_vector
+        flatbuffers
 
         minizip
         lzma
@@ -29,17 +33,27 @@ target_link_libraries(ysm-core PRIVATE
         turbojpeg-static
         spng_static
         webp
-
         opus
 
         blake3
         cryptopp
 )
+
+# common deps
 target_link_libraries(ysm-core PUBLIC
         mimalloc-static
+
         msft_proxy4
-        jni
         optional_ref
+        pystring
+        magic_enum
+
+        cglm
+        jni
+        cpu_features
+        yalantinglibs
+
+        absl::inlined_vector
         absl::flat_hash_map
         absl::status
         absl::statusor
@@ -47,13 +61,26 @@ target_link_libraries(ysm-core PUBLIC
         absl::log_initialize
         absl::log
         absl::time
-        pystring
-        magic_enum
-        cglm
-        cpu_features
-        yalantinglibs
-        flatbuffers
 )
+
+# tracy
+if (YSM_ENABLE_TRACY)
+    target_link_libraries(ysm-core PUBLIC Tracy::TracyClient)
+    target_compile_definitions(ysm-core PUBLIC
+            YSM_ENABLE_TRACY=1
+            TRACY_ENABLE
+            TRACY_ON_DEMAND
+            TRACY_NO_CALLSTACK
+            TRACY_NO_CODE_TRANSFER
+            TRACY_NO_CONTEXT_SWITCH
+            TRACY_NO_SAMPLING
+            TRACY_NO_VSYNC_CAPTURE
+            TRACY_NO_FRAME_IMAGE
+            TRACY_NO_SYSTEM_TRACING
+            TRACY_NO_CRASH_HANDLER)
+endif ()
+
+# system
 if (YSM_LINUX OR YSM_MACOS)
     find_package(Iconv REQUIRED)
     target_link_libraries(ysm-core PRIVATE Iconv::Iconv)

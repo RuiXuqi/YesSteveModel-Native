@@ -24,6 +24,14 @@ inline jlong ShareOpaquePtr(jlong ptr) {
         new std::any(*reinterpret_cast<const std::any*>(ptr)));
 }
 
+template <typename T>
+jlong ShareOpaquePtr(const std::shared_ptr<T>& ptr) {
+    if (!ptr) [[unlikely]] {
+        return 0;
+    }
+    return reinterpret_cast<jlong>(new std::any(ptr));
+}
+
 inline void DestroyOpaquePtr(jlong addr) {
     if (addr) [[likely]] {
         delete reinterpret_cast<std::any*>(addr);

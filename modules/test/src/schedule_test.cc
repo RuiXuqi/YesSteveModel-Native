@@ -9,7 +9,7 @@
 
 #include <gtest/gtest.h>
 
-#include "../../core/src/bake/baked_model.h"
+#include "bake/baked_model.h"
 #include "bake/baked_serializer.h"
 #include "cpu.h"
 #include "renderer/schedule.h"
@@ -288,6 +288,62 @@ TEST(ScheduleTest, BuildSchedule) {
     EXPECT_EQ(dense_schedule.vertex_count, 120);
     EXPECT_EQ(dense_schedule.translucent_vertex_count, 0);
     EXPECT_EQ(dense_schedule.translucent_vertex_offset, 120);
+}
+
+TEST(ScheduleTest, BuildsAllPartitionsAcrossWorkers) {
+    auto model = MakeScheduleModel();
+    renderer::RenderSchedule schedule;
+    const std::array<uint16_t, 3> selected_bones{0, 1, 2};
+
+    ASSERT_TRUE(schedule.Update(model->Bones(), selected_bones, 2).ok());
+    ASSERT_EQ(schedule.mode, renderer::RenderSchedulingMode::kSerialLateWake);
+    ASSERT_EQ(schedule.tasks.size(), 2);
+    EXPECT_EQ(schedule.vertex_count, 80);
+    EXPECT_EQ(schedule.translucent_vertex_count, 40);
+    EXPECT_EQ(schedule.translucent_vertex_offset, 40);
+
+    const auto& first = schedule.tasks[0];
+    EXPECT_EQ(first.cutout.cube_indices, std::vector<uint32_t>({0}));
+    EXPECT_EQ(first.cutout.vertex_offset, 0);
+    EXPECT_EQ(first.cutout.expected_vertex_count, 12);
+    EXPECT_TRUE(first.cutout_no_culling.cube_indices.empty());
+    EXPECT_EQ(first.cutout_no_culling.vertex_offset, 24);
+    EXPECT_EQ(first.cutout_no_culling.expected_vertex_count, 0);
+    EXPECT_EQ(first.translucent.cube_indices, std::vector<uint32_t>({0}));
+    EXPECT_EQ(first.translucent.vertex_offset, 0);
+    EXPECT_EQ(first.translucent.expected_vertex_count, 12);
+    EXPECT_EQ(first.translucent_culling.cube_indices,
+              std::vector<uint32_t>({0}));
+    EXPECT_EQ(first.translucent_culling.vertex_offset, 20);
+    EXPECT_EQ(first.translucent_culling.expected_vertex_count, 12);
+
+    const auto& second = schedule.tasks[1];
+    EXPECT_EQ(second.cutout.cube_indices, std::vector<uint32_t>({1, 2}));
+    EXPECT_EQ(second.cutout.vertex_offset, 12);
+    EXPECT_EQ(second.cutout.expected_vertex_count, 12);
+    EXPECT_EQ(second.cutout_no_culling.cube_indices,
+              std::vector<uint32_t>({0}));
+    EXPECT_EQ(second.cutout_no_culling.vertex_offset, 24);
+    EXPECT_EQ(second.cutout_no_culling.expected_vertex_count, 16);
+    EXPECT_EQ(second.translucent.cube_indices, std::vector<uint32_t>({1}));
+    EXPECT_EQ(second.translucent.vertex_offset, 12);
+    EXPECT_EQ(second.translucent.expected_vertex_count, 8);
+    EXPECT_EQ(second.translucent_culling.cube_indices,
+              std::vector<uint32_t>({1}));
+    EXPECT_EQ(second.translucent_culling.vertex_offset, 32);
+    EXPECT_EQ(second.translucent_culling.expected_vertex_count, 8);
+
+    auto dense_model = MakeDenseScheduleModel();
+    const std::array<uint16_t, 1> dense_bones{0};
+    ASSERT_TRUE(schedule.Update(dense_model->Bones(), dense_bones, 2).ok());
+    for (const auto& task : schedule.tasks) {
+        EXPECT_TRUE(task.cutout_no_culling.cube_indices.empty());
+        EXPECT_EQ(task.cutout_no_culling.expected_vertex_count, 0);
+        EXPECT_TRUE(task.translucent.cube_indices.empty());
+        EXPECT_EQ(task.translucent.expected_vertex_count, 0);
+        EXPECT_TRUE(task.translucent_culling.cube_indices.empty());
+        EXPECT_EQ(task.translucent_culling.expected_vertex_count, 0);
+    }
 }
 
 TEST(ScheduleTest, SelectsExecutionModeAtMeasuredBoundaries) {

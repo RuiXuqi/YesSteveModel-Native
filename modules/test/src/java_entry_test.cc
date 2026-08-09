@@ -214,8 +214,7 @@ TEST(JavaEntryTest, StatusUsesBooleanDescriptorForSuccessFlag) {
     EXPECT_EQ(BooleanThunk::Invoke(nullptr, nullptr, 0), JNI_FALSE);
 #if GTEST_HAS_STREAM_REDIRECTION
     auto output = testing::internal::GetCapturedStdout();
-    EXPECT_NE(output.find("Entry.nBooleanStatus/entry.h:"),
-              std::string::npos);
+    EXPECT_NE(output.find("Entry.nBooleanStatus]"), std::string::npos);
 #endif
 }
 
@@ -259,7 +258,7 @@ TEST(JavaEntryTest, AddsSimpleClassAndNativeMethodLoggingScope) {
 
 #if GTEST_HAS_STREAM_REDIRECTION
     auto output = testing::internal::GetCapturedStdout();
-    constexpr std::string_view kScope = "Image$Native.nProbe/";
+    constexpr std::string_view kScope = "Image$Native.nProbe]";
     auto scope_pos = output.find(kScope);
     ASSERT_NE(scope_pos, std::string::npos);
     EXPECT_EQ(output.find(kScope, scope_pos + 1), std::string::npos);

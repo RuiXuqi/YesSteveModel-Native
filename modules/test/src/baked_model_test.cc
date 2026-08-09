@@ -8,7 +8,7 @@
 #include <gtest/gtest.h>
 #include <ylt/struct_pb.hpp>
 
-#include "../../core/src/bake/baked_model.h"
+#include "bake/baked_model.h"
 #include "bake/baked_serializer.h"
 #include "bake/fbs/baked_model_generated.h"
 #include "bake/pb/geo_model.proto.h"
