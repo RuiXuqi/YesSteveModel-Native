@@ -5,11 +5,12 @@
 #include <ranges>
 #include <cglm/vec4.h>
 
-#include "../math/pose_stack.h"
+#include "math/pose_stack.h"
 #include "err.h"
 #include "fast_math.h"
 #include "inline.h"
 #include "math/mat4_mul.h"
+#include "profile.h"
 #include "render_state.h"
 
 YSM_FAST_MATH_BEGIN
@@ -48,7 +49,7 @@ YSM_INLINE void ComputeFacingCoefficient(const mat4 matrix, vec4 destination) no
         -Determinant3(x[0], x[1], x[2], y[0], y[1], y[2], w[0], w[1], w[2]);
 }
 
-YSM_INLINE void CombineFacingCoefficient(const vec4 outer, const math::PoseStack::Pose& bone,
+YSM_INLINE void CombineFacingCoefficient(const vec4 outer, const BonePose& bone,
                               vec4 destination) noexcept {
     vec3 translated;
     glm_vec3_scale(bone.pose[3], outer[3], translated);
@@ -94,6 +95,12 @@ YSM_INLINE bool DetermineUniformScale(const mat3 linear) noexcept {
         }
     return true;
 }
+
+YSM_INLINE uint8_t MultiplyChannel(uint8_t parent, uint8_t value) noexcept {
+    return static_cast<uint8_t>((static_cast<uint32_t>(parent) * value +
+                                 127u) /
+                                255u);
+}
 }  // namespace
 }
 
@@ -103,9 +110,11 @@ namespace ysm::renderer {
 template <>
 absl::Status RenderState::UpdateCommon<YSM_SIMD_TAG>(YSM_SIMD_TAG tag, const RenderParameters& params,
                                        const ModelState& model_state) {
+    YSM_PROFILE_ZONE("YSM/C++/RenderState.UpdateCommon");
     auto& model_info = model_state.Model()->Info();
     auto& bone_info = model_state.Model()->Bones();
     auto& schedule = model_state.Schedule();
+    YSM_PROFILE_VALUE(bone_info.list.size());
 
     if (schedule.mode == RenderSchedulingMode::kWorkerReadySpin) {
         worker_ready_size = schedule.tasks.size();
@@ -156,6 +165,7 @@ absl::Status RenderState::Update<YSM_SIMD_TAG>(YSM_SIMD_TAG tag,
                                  const ModelState& model_state,
                                  uint32_t worker_index,
                                  uint32_t worker_count) {
+    YSM_PROFILE_ZONE("YSM/C++/RenderState.Update");
     YSM_ASSERT(IsFinite(std::span(&params.model[0][0], 16)) &&
                    IsFinite(std::span(&params.view[0][0], 16)) &&
                    IsFinite(std::span(&params.projection[0][0], 16)) &&
@@ -165,6 +175,7 @@ absl::Status RenderState::Update<YSM_SIMD_TAG>(YSM_SIMD_TAG tag,
     auto model_pose = model_state.PoseView();
     auto [begin, end] = DetermineTaskRange(worker_index,
         worker_count, model_pose.render_bone_indices.size());
+    YSM_PROFILE_VALUE(end - begin);
 
     auto err = OkStatus();
     for (auto i = begin; i < end; ++i) {
@@ -207,7 +218,27 @@ absl::Status RenderState::Update<YSM_SIMD_TAG>(YSM_SIMD_TAG tag,
             ExtractRow(clip, 3, destination.depth_w);
         }
 
-        destination.packed_light = params.light;
+        // 这对吗？
+        Color opaque_color;
+        opaque_color.components.r = MultiplyChannel(
+            params.color.components.r, source.color.components.r);
+        opaque_color.components.g = MultiplyChannel(
+            params.color.components.g, source.color.components.g);
+        opaque_color.components.b = MultiplyChannel(
+            params.color.components.b, source.color.components.b);
+        opaque_color.components.a = params.color.components.a;
+        auto translucent_color = opaque_color;
+        translucent_color.components.a = MultiplyChannel(
+            params.color.components.a, source.color.components.a);
+        destination.packed_opaque_color = opaque_color.packed;
+        destination.packed_translucent_color = translucent_color.packed;
+
+        destination.packed_light = source.glowing == 0xFFu
+                                       ? params.light
+                                       : (static_cast<uint32_t>(source.glowing)
+                                              << 4) |
+                                             (static_cast<uint32_t>(source.glowing)
+                                              << 20);
     }
     return err;
 }

@@ -10,7 +10,7 @@
 
 #include "java/opaque_ptr.h"
 
-namespace ysm::lib::render {
+namespace ysm::lib::bake {
 namespace {
 constexpr uint64_t kOriginVerMask = 0xffff;
 constexpr uint64_t kForceCullingMask = 1ULL << 16;
@@ -40,12 +40,12 @@ YSM_JNI_ENTRY(
     if ((packed_options & ~kBakeOptionsMask) != 0) {
         return absl::InvalidArgumentError("Invalid bake options.");
     }
-    bake::Texture texture(reinterpret_cast<const bake::Pixel*>(pixels_ptr),
+    ysm::bake::Texture texture(reinterpret_cast<const ysm::bake::Pixel*>(pixels_ptr),
                           static_cast<size_t>(pixels_width),
                           static_cast<size_t>(pixels_height));
     YSM_DECLARE_OR_RETURN(
         baked_model,
-        bake::BakeModel(
+        ysm::bake::BakeModel(
             model_data, texture,
             {.origin_ver =
                  static_cast<uint16_t>(packed_options & kOriginVerMask),
@@ -56,7 +56,7 @@ YSM_JNI_ENTRY(
     YSM_RETURN_IF_ERROR(java::WriteShortArray(
         env, sorted_bone_indices_array,
         baked_model->Bones().sorted_bone_indices));
-    auto baked_data = bake::SerializeBakedModel(*baked_model);
+    auto baked_data = ysm::bake::SerializeBakedModel(*baked_model);
     YSM_LOG_DEBUG(
         "Baked model: input={} bytes, texture={}x{}, bones={}, "
         "output={} bytes",
@@ -81,10 +81,10 @@ YSM_JNI_ENTRY(
     if ((packed_options & ~kBakeOptionsMask) != 0) {
         return absl::InvalidArgumentError("Invalid bake options.");
     }
-    bake::Texture texture(reinterpret_cast<const bake::Pixel*>(pixels_ptr),
+    ysm::bake::Texture texture(reinterpret_cast<const ysm::bake::Pixel*>(pixels_ptr),
                           static_cast<size_t>(pixels_width),
                           static_cast<size_t>(pixels_height));
-    return bake::TryBakeModel(
+    return ysm::bake::TryBakeModel(
         model_data, texture,
         {.origin_ver =
              static_cast<uint16_t>(packed_options & kOriginVerMask),
@@ -101,13 +101,13 @@ YSM_JNI_ENTRY(
         baked_model_buf,
         java::BufferInput<true, true>::Get(env, baked_model_buf_obj,
                                            baked_model_buf_flags));
-    YSM_DECLARE_OR_RETURN(model, bake::ReadBakedModel(baked_model_buf));
+    YSM_DECLARE_OR_RETURN(model, ysm::bake::ReadBakedModel(baked_model_buf));
     YSM_RETURN_IF_ERROR(java::WriteShortArray(
         env, sorted_bone_indices_array,
         model->Bones().sorted_bone_indices));
     YSM_LOG_DEBUG("Read baked model: input={} bytes, bones={}",
                   baked_model_buf.size(),
                   model->Bones().sorted_bone_indices.size());
-    return java::MakeOpaquePtr<bake::BakedModel>(std::move(*model));
+    return java::MakeOpaquePtr<ysm::bake::BakedModel>(std::move(*model));
 }
 }  // namespace ysm::lib::render

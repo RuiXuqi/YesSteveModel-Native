@@ -33,7 +33,6 @@ void PerformRender(YSM_SIMD_TAG tag, const auto& vertex_consumer, const auto& mo
     auto vertex_writer = vertex_consumer.CreateVertexWriter(
         task.vertex_offset, task.expected_vertex_count);
     const auto iris_entity_id = params.iris_entity_id;
-    const auto packed_color = params.color.packed;
     const auto overlay = params.overlay;
 
     for (auto cube_group_index : task.cube_indices) {
@@ -49,6 +48,9 @@ void PerformRender(YSM_SIMD_TAG tag, const auto& vertex_consumer, const auto& mo
         }
 
         const auto light = bone_state.packed_light;
+        const auto packed_color = kTranslucent
+                                      ? bone_state.packed_translucent_color
+                                      : bone_state.packed_opaque_color;
         cube::CubeOutput<CubeGroupType> out_cube_group;
 
         cube::Transform<kCulling, kIris, kHasPbr, kPosOnly>(

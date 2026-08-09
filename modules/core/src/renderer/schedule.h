@@ -5,7 +5,7 @@
 #include <span>
 #include <vector>
 
-#include "../bake/baked_model.h"
+#include "bake/baked_model.h"
 
 namespace ysm::renderer {
 enum class RenderSchedulingMode : uint8_t {

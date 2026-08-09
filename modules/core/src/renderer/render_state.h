@@ -27,6 +27,8 @@ struct alignas(64) RenderBoneState {
     vec4 depth_w;
     float tangent_orientation;
     uint32_t packed_light;
+    uint32_t packed_opaque_color;
+    uint32_t packed_translucent_color;
     bool uniform_scale;
 
     bool ok = true;

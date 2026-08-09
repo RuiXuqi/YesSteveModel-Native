@@ -2,9 +2,9 @@
 
 #include "hierarchy/tree.h"
 
-#include "../buffer.h"
-#include "../err.h"
-#include "../fs.h"
+#include "buffer.h"
+#include "err.h"
+#include "fs.h"
 
 namespace ysm::codec {
 template <typename ArchiveType, typename EntryType = ArchiveType::EntryType>

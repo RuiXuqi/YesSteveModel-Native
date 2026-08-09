@@ -1,11 +1,14 @@
 #include "render.h"
 
+#include <utility>
+
 #define YSM_TRANSFORM_USE_APPROXIMATE_RSQRT 1
 
 #include "cpu.h"
 #include "enum.h"
 #include "log.h"
 #include "parallel_executor.h"
+#include "profile.h"
 #include "buffer/translucent.h"
 #include "renderer/cube/output.h"
 #include "renderer/cube/transform.h"
@@ -55,6 +58,18 @@ struct NopWaiter {
     NopWaiter(auto&&...) {}
     [[nodiscard]] bool Wait(auto&&) const noexcept { return true; }
 };
+
+template <RenderContext kContext>
+consteval std::string_view ProfileRenderContext() noexcept {
+    if constexpr (kContext == RenderContext::kLevel) {
+        return "YSM/C++/Render/LEVEL"sv;
+    } else if constexpr (kContext == RenderContext::kIrisShadow) {
+        return "YSM/C++/Render/IRIS_SHADOW"sv;
+    } else {
+        static_assert(kContext == RenderContext::kGui);
+        return "YSM/C++/Render/GUI"sv;
+    }
+}
 }
 
 absl::Status Render(BufferView vertex_buffer, VertexKind vertex_kind,
@@ -80,6 +95,9 @@ absl::Status Render(BufferView vertex_buffer, VertexKind vertex_kind,
         using TranslucentBufferType =
             buffer::TranslucentProxyBuffer<VertexBufferType>;
         static constexpr simd::Tag<kSimdType> tag;
+
+        YSM_PROFILE_ZONE(ProfileRenderContext<kRenderContext>().data());
+        YSM_PROFILE_VALUE(model_state.Schedule().vertex_count);
 
         YSM_RETURN_IF_ERROR(state.UpdateCommon(tag, parameters, model_state));
 
@@ -127,12 +145,16 @@ absl::Status Render(BufferView vertex_buffer, VertexKind vertex_kind,
             // cutout
             if (auto& partition = task.cutout;
                 !partition.cube_indices.empty()) {
+                YSM_PROFILE_ZONE("YSM/C++/Partition/Cutout");
+                YSM_PROFILE_VALUE(partition.expected_vertex_count);
                 PerformRender<true, kHasPbr>(
                     tag, vertex_consumer, cubes.cutout, state, partition,
                     parameters, bone_waiter);
             }
             if (auto& partition = task.cutout_no_culling;
                 !partition.cube_indices.empty()) {
+                YSM_PROFILE_ZONE("YSM/C++/Partition/CutoutNoCulling");
+                YSM_PROFILE_VALUE(partition.expected_vertex_count);
                 PerformRender<false, kHasPbr>(
                     tag, vertex_consumer, cubes.cutout_no_culling, state,
                     partition, parameters, bone_waiter);
@@ -140,12 +162,16 @@ absl::Status Render(BufferView vertex_buffer, VertexKind vertex_kind,
             // translucent
             if (auto& partition = task.translucent;
                 !partition.cube_indices.empty()) {
+                YSM_PROFILE_ZONE("YSM/C++/Partition/Translucent");
+                YSM_PROFILE_VALUE(partition.expected_vertex_count);
                 PerformRender<false, kHasPbr>(
                     tag, translucent_proxy, cubes.translucent, state,
                     partition, parameters, bone_waiter);
             }
             if (auto& partition = task.translucent_culling;
                 !partition.cube_indices.empty()) {
+                YSM_PROFILE_ZONE("YSM/C++/Partition/TranslucentCulling");
+                YSM_PROFILE_VALUE(partition.expected_vertex_count);
                 PerformRender<true, kHasPbr>(
                     tag, translucent_proxy, cubes.translucent_culling, state,
                     partition, parameters, bone_waiter);
@@ -159,8 +185,12 @@ absl::Status Render(BufferView vertex_buffer, VertexKind vertex_kind,
             ysm_lfence;
         }
 
-        translucent_proxy.Flush(parameters.ctx !=
-                                RenderContext::kIrisShadow);
+        {
+            YSM_PROFILE_ZONE("YSM/C++/Translucent.Flush");
+            YSM_PROFILE_VALUE(schedule.translucent_vertex_count);
+            translucent_proxy.Flush(parameters.ctx !=
+                                    RenderContext::kIrisShadow);
+        }
 
         return err ? absl::InternalError("Error updating render bone state") : OkStatus();
     }, vertex_kind, simd::kSupported, parameters.ctx, has_pbr,

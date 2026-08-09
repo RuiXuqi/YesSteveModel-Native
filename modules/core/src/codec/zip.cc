@@ -5,7 +5,7 @@
 #include <mz_strm_os.h>
 #include <mz_zip.h>
 
-#include "../string_cvt.h"
+#include "string_cvt.h"
 #include "err.h"
 #include "log.h"
 

@@ -285,8 +285,6 @@ Ref<jobjectArray> ObjectArray(JNIEnv_* env, jclass type, jsize size, auto&& func
          \
          ~Critical##NAME##Array() noexcept { clear(true); }    \
          \
-         size_t length() const { return length_; }    \
-         \
          TYPE##Array obj() const { return obj_; }    \
          \
          void clear() {    \

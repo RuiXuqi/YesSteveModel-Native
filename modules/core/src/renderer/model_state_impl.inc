@@ -8,6 +8,7 @@
 
 #include "err.h"
 #include "parallel_executor.h"
+#include "profile.h"
 
 YSM_FAST_MATH_BEGIN
 
@@ -52,6 +53,13 @@ bool IsFinite(YSM_SIMD_TAG tag, const BoneAttribute& attribute) noexcept {
            std::isfinite(attribute.children_hidden) &&
            std::isfinite(attribute.locator_sequence);
 }
+
+YSM_SIMD_TARGET
+bool IsPackedInteger(YSM_SIMD_TAG tag, float value,
+                     uint32_t maximum) noexcept {
+    return std::isfinite(value) && value >= 0.0f &&
+           value <= static_cast<float>(maximum) && std::trunc(value) == value;
+}
 }  // namespace
 
 template <>
@@ -60,8 +68,8 @@ absl::StatusOr<ModelState::ExtractOutput> ModelState::Extract<YSM_SIMD_TAG>(
     YSM_SIMD_TAG tag,
     const std::shared_ptr<bake::BakedModel>& baked_model,
     std::span<const BoneAttribute> bone_attributes,
-    size_t locator_capacity,
-    std::span<math::PoseStack::Pose> bone_pose_buffer) {
+    size_t locator_capacity) {
+    YSM_PROFILE_ZONE("YSM/C++/ModelState.Extract");
     locator_bone_indices_scratch_.resize(locator_capacity);
     valid_ = false;
 
@@ -79,12 +87,13 @@ absl::StatusOr<ModelState::ExtractOutput> ModelState::Extract<YSM_SIMD_TAG>(
 
     const auto& bones = baked_model->Bones();
     const auto bone_count = bones.list.size();
+    YSM_PROFILE_VALUE(bone_count);
     YSM_ASSERT(bone_count <= static_cast<size_t>(
                                  std::numeric_limits<uint16_t>::max()) + 1ULL &&
                    bone_attributes.size() == bone_count &&
-                   locator_capacity >= bone_count &&
-                   bone_pose_buffer.size() >= bone_count,
+                   locator_capacity >= bone_count,
                absl::InvalidArgumentError("Invalid ModelState buffers."));
+    bone_poses_.resize(bone_count);
 
     const auto previous_bone_index_count = render_bone_indices_.size();
     render_bone_indices_.reserve(bone_count);
@@ -102,6 +111,17 @@ absl::StatusOr<ModelState::ExtractOutput> ModelState::Extract<YSM_SIMD_TAG>(
         const auto& attribute = bone_attributes[bone_index];
         pose_stack.PopPose(bone.depth);
         pose_stack.PushPose();
+        YSM_ASSERT(IsPackedInteger(tag, attribute.color, 0xFFFFFFu) &&
+                       IsPackedInteger(tag, attribute.transparency_glow,
+                                       0xFFFFu),
+                   absl::InvalidArgumentError(
+                       "Invalid packed bone render attribute."));
+        const auto packed_color = static_cast<uint32_t>(attribute.color);
+        const auto packed_transparency_glow =
+            static_cast<uint32_t>(attribute.transparency_glow);
+        const auto glowing = packed_transparency_glow >> 8;
+        YSM_ASSERT(glowing == 0xFFu || glowing <= 15u,
+                   absl::InvalidArgumentError("Invalid bone glow level."));
         const float locator_sequence = attribute.locator_sequence;
         if (!IsFinite(tag, attribute) || attribute.scale[0] == 0.0f ||
             attribute.scale[1] == 0.0f || attribute.scale[2] == 0.0f) {
@@ -119,7 +139,17 @@ absl::StatusOr<ModelState::ExtractOutput> ModelState::Extract<YSM_SIMD_TAG>(
             bone_index = bone.subtree_end;
             continue;
         }
-        pose.CopyTo(bone_pose_buffer[bone_index]);
+
+        // TODO: 整块拷贝
+        auto& output_pose = bone_poses_[bone_index];
+        glm_mat4_copy(pose.pose, output_pose.pose);
+        glm_mat3_copy(pose.normal, output_pose.normal);
+        output_pose.uniform_scale = pose.uniform_scale;
+        output_pose.tangent_orientation = pose.tangent_orientation;
+        output_pose.normal_scale = pose.normal_scale;
+        output_pose.color.packed =
+            packed_color | ((packed_transparency_glow & 0xFFu) << 24);
+        output_pose.glowing = static_cast<uint8_t>(glowing);
 
         const bool cubes_hidden = attribute.cubes_hidden != 0.0f;
         if (!cubes_hidden) {
@@ -158,7 +188,6 @@ absl::StatusOr<ModelState::ExtractOutput> ModelState::Extract<YSM_SIMD_TAG>(
             schedule_.Update(bones, render_bone_indices_, worker_count));
     }
 
-    bone_poses_ = bone_pose_buffer.first(bone_count);
     schedule_worker_count_ = worker_count;
     schedule_valid_ = true;
     valid_ = true;

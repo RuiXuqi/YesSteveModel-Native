@@ -5,12 +5,12 @@ if (NOT YSM_DEPENDENCY_PROVIDER STREQUAL "conan")
     message(FATAL_ERROR "Please build the project using bootstrap scripts.")
 endif ()
 
-include(CTest)
 option(YSM_BUILD_BENCHMARKS "Build the ysm microbenchmark executable" OFF)
-include(third-party/import.cmake)
+option(YSM_ENABLE_DEBUG_LOG "Compile Debug and Trace logging into ysm-core and ysm-lib" OFF)
+option(YSM_ENABLE_TRACY "Enable Tracy CPU profiling instrumentation" OFF)
 
-option(YSM_ENABLE_DEBUG_LOG
-        "Compile Debug and Trace logging into ysm-core and ysm-lib" OFF)
+include(CTest)
+include(third-party/import.cmake)
 
 add_subdirectory(modules/core)
 add_subdirectory(modules/lib)

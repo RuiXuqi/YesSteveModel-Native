@@ -9,6 +9,7 @@
 #include <cglm/mat4.h>
 #include <cglm/affine.h>
 
+#include "system_allocator.h"
 #include "fast_math.h"
 #include "inline.h"
 #include "math/euler.h"
@@ -70,7 +71,7 @@ class PoseStack {
     }
 
    private:
-    std::vector<Pose> poses_;
+    std::vector<Pose, SystemAllocator<Pose>> poses_;
     size_t pose_index_ = 0;
 
     YSM_INLINE static bool IsUniformScale(float x, float y, float z) noexcept {

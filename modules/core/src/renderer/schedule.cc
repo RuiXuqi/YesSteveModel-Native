@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "err.h"
+#include "profile.h"
 
 namespace ysm::renderer {
 namespace {
@@ -51,73 +52,40 @@ uint32_t VertexCount(const bake::BakedModelBones::BonePartitionInfo& bone,
 }
 
 template <bool kCulling>
-absl::Status SchedulePartition(
-    const bake::BakedModelBones& bones,
-    bake::BakedModelBones::BonePartitionInfo bake::BakedModelBones::BoneInfo::*
-        partition,
-    size_t group_count, std::span<const uint16_t> render_bone_indices,
-    RenderTask::Partition RenderTask::* task_partition,
-    std::span<RenderTask> tasks, uint64_t& vertex_offset) {
-    size_t worker = 0;
-    size_t scheduled_group_count = 0;
-    size_t task_end = 0;
-    const auto prepare_worker = [&] {
-        const auto [begin, end] =
-            DetermineTaskRange(worker, tasks.size(), group_count);
-        auto& output = tasks[worker].*task_partition;
+class PartitionCursor {
+    using TaskPartition = RenderTask::Partition RenderTask::*;
 
-        output.cube_indices.clear();
-        output.vertex_offset = 0;
-        output.expected_vertex_count = 0;
+public:
+    PartitionCursor(size_t group_count, TaskPartition task_partition,
+                    std::span<RenderTask> tasks)
+        : group_count_(group_count),
+          task_partition_(task_partition),
+          tasks_(tasks) {
+        Move(0);
+    }
 
-        output.cube_indices.reserve(end - begin);
-        if (vertex_offset > std::numeric_limits<uint32_t>::max()) [[unlikely]] {
-            return false;
-        }
-        output.vertex_offset = static_cast<uint32_t>(vertex_offset);
-        task_end = end;
-        return true;
-    };
-    const auto finish_worker = [&] {
-        vertex_offset += (tasks[worker].*task_partition).expected_vertex_count;
-        return vertex_offset <= std::numeric_limits<uint32_t>::max();
-    };
-    const auto advance_worker = [&] {
-        while (scheduled_group_count >= task_end && worker + 1 < tasks.size()) {
-            if (!finish_worker()) [[unlikely]] {
-                return false;
-            }
-            ++worker;
-            if (!prepare_worker()) [[unlikely]] {
-                return false;
-            }
-        }
-        return true;
-    };
-    YSM_ASSERT(prepare_worker(), absl::ResourceExhaustedError(
-                                     "Render schedule vertex count exceeds "
-                                     "uint32_t."));
-
-    for (const auto bone_index : render_bone_indices) {
-        const auto& bone = bones.list[bone_index].*partition;
+    bool Append(
+        const bake::BakedModelBones::BonePartitionInfo& bone) {
         size_t bone_group_begin = 0;
         while (bone_group_begin < bone.cube_indices.size()) {
-            if (!advance_worker()) [[unlikely]] {
-                return absl::ResourceExhaustedError(
-                    "Render schedule vertex count exceeds uint32_t.");
+            while (scheduled_group_count_ >= task_end_ &&
+                   worker_ + 1 < tasks_.size()) {
+                Move(worker_ + 1);
+            }
+            if (scheduled_group_count_ >= task_end_) [[unlikely]] {
+                return false;
             }
 
             const auto group_count_for_task =
                 std::min(bone.cube_indices.size() - bone_group_begin,
-                         task_end - scheduled_group_count);
+                         task_end_ - scheduled_group_count_);
             const auto bone_group_end = bone_group_begin + group_count_for_task;
             const auto vertex_count =
                 VertexCount<kCulling>(bone, bone_group_begin, bone_group_end);
-            auto& output = tasks[worker].*task_partition;
+            auto& output = tasks_[worker_].*task_partition_;
             if (vertex_count > std::numeric_limits<uint32_t>::max() -
                                    output.expected_vertex_count) [[unlikely]] {
-                return absl::ResourceExhaustedError(
-                    "Render task vertex count exceeds uint32_t.");
+                return false;
             }
 
             const auto selected = bone.cube_indices.subspan(
@@ -125,49 +93,53 @@ absl::Status SchedulePartition(
             output.cube_indices.insert(output.cube_indices.end(),
                                        selected.begin(), selected.end());
             output.expected_vertex_count += vertex_count;
-            scheduled_group_count += group_count_for_task;
+            scheduled_group_count_ += group_count_for_task;
             bone_group_begin = bone_group_end;
         }
+        return true;
     }
 
-    while (worker + 1 < tasks.size()) {
-        YSM_ASSERT(finish_worker(),
-                   absl::ResourceExhaustedError(
-                       "Render schedule vertex count exceeds uint32_t."));
-        ++worker;
-        YSM_ASSERT(prepare_worker(),
-                   absl::ResourceExhaustedError(
-                       "Render schedule vertex count exceeds uint32_t."));
+    bool Finish(uint64_t& vertex_offset) {
+        if (scheduled_group_count_ != group_count_) [[unlikely]] {
+            return false;
+        }
+        while (worker_ + 1 < tasks_.size()) {
+            Move(worker_ + 1);
+        }
+        for (auto& task : tasks_) {
+            auto& output = task.*task_partition_;
+            if (vertex_offset > std::numeric_limits<uint32_t>::max()) [[unlikely]] {
+                return false;
+            }
+            output.vertex_offset = static_cast<uint32_t>(vertex_offset);
+            vertex_offset += output.expected_vertex_count;
+        }
+        if (vertex_offset > std::numeric_limits<uint32_t>::max()) {
+            return false;
+        }
+        return true;
     }
-    YSM_ASSERT(finish_worker(),
-               absl::ResourceExhaustedError(
-                   "Render schedule vertex count exceeds uint32_t."));
-    return OkStatus();
-}
 
-absl::Status SchedulePartitions(const bake::BakedModelBones& bones,
-                                const PartitionGroupCounts& group_counts,
-                                std::span<const uint16_t> render_bone_indices,
-                                std::span<RenderTask> tasks,
-                                uint64_t& opaque_vertex_count,
-                                uint64_t& translucent_vertex_count) {
-    YSM_RETURN_IF_ERROR(SchedulePartition<true>(
-        bones, &bake::BakedModelBones::BoneInfo::cutout, group_counts.cutout,
-        render_bone_indices, &RenderTask::cutout, tasks, opaque_vertex_count));
-    YSM_RETURN_IF_ERROR(SchedulePartition<false>(
-        bones, &bake::BakedModelBones::BoneInfo::cutout_no_culling,
-        group_counts.cutout_no_culling, render_bone_indices,
-        &RenderTask::cutout_no_culling, tasks, opaque_vertex_count));
-    YSM_RETURN_IF_ERROR(SchedulePartition<false>(
-        bones, &bake::BakedModelBones::BoneInfo::translucent,
-        group_counts.translucent, render_bone_indices, &RenderTask::translucent,
-        tasks, translucent_vertex_count));
-    YSM_RETURN_IF_ERROR(SchedulePartition<true>(
-        bones, &bake::BakedModelBones::BoneInfo::translucent_culling,
-        group_counts.translucent_culling, render_bone_indices,
-        &RenderTask::translucent_culling, tasks, translucent_vertex_count));
-    return OkStatus();
-}
+private:
+    void Move(size_t worker) {
+        worker_ = worker;
+        const auto [begin, end] =
+            DetermineTaskRange(worker_, tasks_.size(), group_count_);
+        auto& output = tasks_[worker_].*task_partition_;
+        output.cube_indices.clear();
+        output.vertex_offset = 0;
+        output.expected_vertex_count = 0;
+        output.cube_indices.reserve(end - begin);
+        task_end_ = end;
+    }
+
+    size_t group_count_;
+    TaskPartition task_partition_;
+    std::span<RenderTask> tasks_;
+    size_t worker_ = 0;
+    size_t scheduled_group_count_ = 0;
+    size_t task_end_ = 0;
+};
 }  // namespace
 
 RenderSchedulingMode DetermineRenderSchedulingMode(
@@ -195,6 +167,7 @@ RenderSchedulingMode DetermineRenderSchedulingMode(
 absl::Status RenderSchedule::Update(
     const bake::BakedModelBones& bones,
     std::span<const uint16_t> render_bone_indices, size_t worker_count) {
+    YSM_PROFILE_ZONE("YSM/C++/RenderSchedule.Update");
     YSM_ASSERT(worker_count != 0,
                absl::InternalError("Renderer has no workers."));
     YSM_ASSERT(worker_count <=
@@ -208,56 +181,100 @@ absl::Status RenderSchedule::Update(
     const auto bone_count = bones.list.size();
 
     PartitionGroupCounts group_counts;
+    static constinit auto accumulate = [](const auto& partition, size_t& count) {
+        if (partition.cube_group_info.size() !=
+            partition.cube_indices.size()) [[unlikely]] {
+            return false;
+            }
+        count += partition.cube_indices.size();
+        return true;
+    };
+
     for (const auto bone_index : render_bone_indices) {
         YSM_ASSERT(
             bone_index < bone_count,
             absl::InvalidArgumentError("Render bone index out of range."));
         const auto& bone = bones.list[bone_index];
-        const auto accumulate = [&](const auto& partition, size_t& count) {
-            if (partition.cube_group_info.size() !=
-                partition.cube_indices.size()) [[unlikely]] {
-                return false;
-            }
-            count += partition.cube_indices.size();
-            return true;
-        };
-        YSM_ASSERT(accumulate(bone.cutout, group_counts.cutout) &&
-                       accumulate(bone.cutout_no_culling,
-                                  group_counts.cutout_no_culling) &&
-                       accumulate(bone.translucent, group_counts.translucent) &&
-                       accumulate(bone.translucent_culling,
-                                  group_counts.translucent_culling),
+        YSM_ASSERT(accumulate(bone.cutout,
+                              group_counts.cutout) &&
+                   accumulate(bone.cutout_no_culling,
+                              group_counts.cutout_no_culling) &&
+                   accumulate(bone.translucent,
+                              group_counts.translucent) &&
+                   accumulate(bone.translucent_culling,
+                              group_counts.translucent_culling),
                    absl::DataLossError(
                        "Inconsistent cube group cache in baked model."));
     }
     auto cube_group_count =
         group_counts.cutout + group_counts.cutout_no_culling +
         group_counts.translucent + group_counts.translucent_culling;
+    YSM_PROFILE_VALUE(cube_group_count);
     mode = DetermineRenderSchedulingMode(worker_count, render_bone_indices.size(),
                                          cube_group_count);
     tasks.resize(worker_count);
-    if (mode == RenderSchedulingMode::kWorkerReadySpin) {
+    auto scheduled_tasks = mode != RenderSchedulingMode::kInline
+                               ? std::span{tasks}
+                               : std::span{tasks.data(), 1};
+    PartitionCursor<true> cutout(group_counts.cutout, &RenderTask::cutout,
+                                 scheduled_tasks);
+    PartitionCursor<false> cutout_no_culling(
+        group_counts.cutout_no_culling, &RenderTask::cutout_no_culling,
+        scheduled_tasks);
+    PartitionCursor<false> translucent(group_counts.translucent,
+                                       &RenderTask::translucent,
+                                       scheduled_tasks);
+    PartitionCursor<true> translucent_culling(
+        group_counts.translucent_culling, &RenderTask::translucent_culling,
+        scheduled_tasks);
+
+    const bool worker_ready = mode == RenderSchedulingMode::kWorkerReadySpin;
+    if (worker_ready) {
         bone_update_owners.assign(bones.list.size(), UINT8_MAX);
-        for (size_t worker_index = 0; worker_index < worker_count;
-             ++worker_index) {
-            const auto [begin, end] = DetermineTaskRange(
-                worker_index, worker_count, render_bone_indices.size());
-            for (size_t index = begin; index < end; ++index) {
-                bone_update_owners[render_bone_indices[index]] =
-                    static_cast<uint8_t>(worker_index);
-            }
-        }
     } else {
         bone_update_owners.clear();
     }
 
+    size_t bone_worker = 0;
+    size_t bone_worker_end =
+        worker_ready
+            ? DetermineTaskRange(0, worker_count, render_bone_indices.size())
+                  .second
+            : 0;
+
+    constinit static auto error_supplier = [] {
+        return absl::InternalError("Failed to update schedule");
+    };
+
+    for (size_t render_index = 0; render_index < render_bone_indices.size();
+         ++render_index) {
+        const auto bone_index = render_bone_indices[render_index];
+        if (worker_ready) {
+            while (render_index >= bone_worker_end &&
+                   bone_worker + 1 < worker_count) {
+                ++bone_worker;
+                bone_worker_end =
+                    DetermineTaskRange(bone_worker, worker_count,
+                                       render_bone_indices.size())
+                        .second;
+            }
+            bone_update_owners[bone_index] =
+                static_cast<uint8_t>(bone_worker);
+        }
+
+        const auto& bone = bones.list[bone_index];
+        YSM_ASSERT(cutout.Append(bone.cutout), error_supplier());
+        YSM_ASSERT(cutout_no_culling.Append(bone.cutout_no_culling), error_supplier());
+        YSM_ASSERT(translucent.Append(bone.translucent), error_supplier());
+        YSM_ASSERT(translucent_culling.Append(bone.translucent_culling), error_supplier());
+    }
+
     uint64_t opaque_vertex_count = 0;
     uint64_t translucent_vertex_count64 = 0;
-    YSM_RETURN_IF_ERROR(
-        SchedulePartitions(bones, group_counts, render_bone_indices,
-                            mode != RenderSchedulingMode::kInline ? tasks :
-                                std::span{tasks.data(), 1},
-                           opaque_vertex_count, translucent_vertex_count64));
+    YSM_ASSERT(cutout.Finish(opaque_vertex_count), error_supplier());
+    YSM_ASSERT(cutout_no_culling.Finish(opaque_vertex_count), error_supplier());
+    YSM_ASSERT(translucent.Finish(translucent_vertex_count64), error_supplier());
+    YSM_ASSERT(translucent_culling.Finish(translucent_vertex_count64), error_supplier());
     YSM_ASSERT(opaque_vertex_count + translucent_vertex_count64 <=
                    std::numeric_limits<uint32_t>::max(),
                absl::ResourceExhaustedError(

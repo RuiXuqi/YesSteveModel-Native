@@ -163,11 +163,10 @@ TEST(ModelStateTest, ExtractsPoseLocatorsAndReusesSchedule) {
     attributes[0].position[0] = 16.0f;
     attributes[1].rotation[2] = std::numbers::pi_v<float> * 0.5f;
     attributes[1].scale[0] = 2.0f;
-    std::vector<math::PoseStack::Pose> poses(4);
     renderer::ModelState state;
 
     auto first =
-        state.Extract(kGenericTag, model, attributes, poses.size(), poses);
+        state.Extract(kGenericTag, model, attributes, attributes.size());
     ASSERT_TRUE(first.ok()) << first.status();
     EXPECT_TRUE(first->schedule_updated);
     EXPECT_EQ(first->vertex_count, 8);
@@ -177,7 +176,7 @@ TEST(ModelStateTest, ExtractsPoseLocatorsAndReusesSchedule) {
     EXPECT_TRUE(std::ranges::equal(state.PoseView().render_bone_indices,
                                    std::array<uint16_t, 2>{1, 3}));
 
-    const auto& child = poses[1];
+    const auto& child = state.PoseView().bone_poses[1];
     EXPECT_NEAR(child.pose[0][0], 0.0f, 0.00001f);
     EXPECT_NEAR(child.pose[0][1], 2.0f, 0.00001f);
     EXPECT_NEAR(child.pose[1][0], -1.0f, 0.00001f);
@@ -185,7 +184,7 @@ TEST(ModelStateTest, ExtractsPoseLocatorsAndReusesSchedule) {
     EXPECT_NEAR(child.pose[3][1], -2.0f, 0.00001f);
     EXPECT_NEAR(child.normal[0][1], 0.5f, 0.00001f);
     EXPECT_NEAR(child.normal[1][0], -1.0f, 0.00001f);
-    const auto& sibling = poses[3];
+    const auto& sibling = state.PoseView().bone_poses[3];
     EXPECT_FLOAT_EQ(sibling.pose[0][0], 1.0f);
     EXPECT_FLOAT_EQ(sibling.pose[0][1], 0.0f);
     EXPECT_FLOAT_EQ(sibling.pose[3][0], -1.0f);
@@ -194,7 +193,7 @@ TEST(ModelStateTest, ExtractsPoseLocatorsAndReusesSchedule) {
 
     attributes[1].position[0] = 4.0f;
     auto second =
-        state.Extract(kGenericTag, model, attributes, poses.size(), poses);
+        state.Extract(kGenericTag, model, attributes, attributes.size());
     ASSERT_TRUE(second.ok()) << second.status();
     EXPECT_FALSE(second->schedule_updated);
     EXPECT_EQ(second->vertex_count, 8);
@@ -202,10 +201,68 @@ TEST(ModelStateTest, ExtractsPoseLocatorsAndReusesSchedule) {
 
     auto other_model = MakeModel();
     auto switched =
-        state.Extract(kGenericTag, other_model, attributes, poses.size(), poses);
+        state.Extract(kGenericTag, other_model, attributes, attributes.size());
     ASSERT_TRUE(switched.ok()) << switched.status();
     EXPECT_TRUE(switched->schedule_updated);
     EXPECT_EQ(state.Model(), other_model);
+}
+
+TEST(ModelStateTest, ExtractsIndependentBoneRenderAttributes) {
+    auto model = MakeModel();
+    auto attributes = MakeAttributes();
+    attributes[0].color = static_cast<float>(0x030201);
+    attributes[0].transparency_glow = static_cast<float>(0x047F);
+    attributes[1].color = static_cast<float>(0x060504);
+    attributes[1].transparency_glow = static_cast<float>(0xFFFF);
+    renderer::ModelState state;
+
+    auto extracted =
+        state.Extract(kGenericTag, model, attributes, attributes.size());
+    ASSERT_TRUE(extracted.ok()) << extracted.status();
+
+    const auto poses = state.PoseView().bone_poses;
+    EXPECT_EQ(poses[0].color.components.r, 1);
+    EXPECT_EQ(poses[0].color.components.g, 2);
+    EXPECT_EQ(poses[0].color.components.b, 3);
+    EXPECT_EQ(poses[0].color.components.a, 127);
+    EXPECT_EQ(poses[0].glowing, 4);
+
+    EXPECT_EQ(poses[1].color.components.r, 4);
+    EXPECT_EQ(poses[1].color.components.g, 5);
+    EXPECT_EQ(poses[1].color.components.b, 6);
+    EXPECT_EQ(poses[1].color.components.a, 255);
+    EXPECT_EQ(poses[1].glowing, 0xFF);
+}
+
+TEST(ModelStateTest, RejectsInvalidPackedBoneRenderAttributes) {
+    auto model = MakeModel();
+
+    {
+        auto attributes = MakeAttributes();
+        attributes[0].color = 0.5f;
+        renderer::ModelState state;
+        auto extracted =
+            state.Extract(kGenericTag, model, attributes, attributes.size());
+        EXPECT_FALSE(extracted.ok());
+    }
+
+    {
+        auto attributes = MakeAttributes();
+        attributes[0].color = 16777216.0f;
+        renderer::ModelState state;
+        auto extracted =
+            state.Extract(kGenericTag, model, attributes, attributes.size());
+        EXPECT_FALSE(extracted.ok());
+    }
+
+    {
+        auto attributes = MakeAttributes();
+        attributes[0].transparency_glow = static_cast<float>(0x10FF);
+        renderer::ModelState state;
+        auto extracted =
+            state.Extract(kGenericTag, model, attributes, attributes.size());
+        EXPECT_FALSE(extracted.ok());
+    }
 }
 
 TEST(ModelStateTest, DetectsEqualSizedBoneIndexChange) {
@@ -215,12 +272,11 @@ TEST(ModelStateTest, DetectsEqualSizedBoneIndexChange) {
 #endif
     auto model = MakeModel();
     auto attributes = MakeAttributes();
-    std::vector<math::PoseStack::Pose> poses(4);
     renderer::ModelState state;
 
     attributes[1].cubes_hidden = 1.0f;
     auto first =
-        state.Extract(kGenericTag, model, attributes, poses.size(), poses);
+        state.Extract(kGenericTag, model, attributes, attributes.size());
     ASSERT_TRUE(first.ok()) << first.status();
     EXPECT_TRUE(first->schedule_updated);
     EXPECT_TRUE(std::ranges::equal(state.PoseView().render_bone_indices,
@@ -229,14 +285,14 @@ TEST(ModelStateTest, DetectsEqualSizedBoneIndexChange) {
     attributes[1].cubes_hidden = 0.0f;
     attributes[3].cubes_hidden = 1.0f;
     auto changed =
-        state.Extract(kGenericTag, model, attributes, poses.size(), poses);
+        state.Extract(kGenericTag, model, attributes, attributes.size());
     ASSERT_TRUE(changed.ok()) << changed.status();
     EXPECT_TRUE(changed->schedule_updated);
     EXPECT_TRUE(std::ranges::equal(state.PoseView().render_bone_indices,
                                    std::array<uint16_t, 1>{1}));
 
     auto unchanged =
-        state.Extract(kGenericTag, model, attributes, poses.size(), poses);
+        state.Extract(kGenericTag, model, attributes, attributes.size());
     ASSERT_TRUE(unchanged.ok()) << unchanged.status();
     EXPECT_FALSE(unchanged->schedule_updated);
 }
@@ -248,12 +304,11 @@ TEST(ModelStateTest, PrunesHiddenInvalidAndZeroScaleSubtrees) {
 #endif
     auto model = MakeModel();
     auto attributes = MakeAttributes();
-    std::vector<math::PoseStack::Pose> poses(4);
     renderer::ModelState state;
 
     attributes[1].children_hidden = 1.0f;
     auto children_hidden =
-        state.Extract(kGenericTag, model, attributes, poses.size(), poses);
+        state.Extract(kGenericTag, model, attributes, attributes.size());
     ASSERT_TRUE(children_hidden.ok()) << children_hidden.status();
     EXPECT_EQ(children_hidden->vertex_count, 8);
     EXPECT_EQ(children_hidden->locator_count, 0);
@@ -261,7 +316,7 @@ TEST(ModelStateTest, PrunesHiddenInvalidAndZeroScaleSubtrees) {
     attributes[1].children_hidden = 0.0f;
     attributes[1].scale[0] = 0.0f;
     auto zero_scale =
-        state.Extract(kGenericTag, model, attributes, poses.size(), poses);
+        state.Extract(kGenericTag, model, attributes, attributes.size());
     ASSERT_TRUE(zero_scale.ok()) << zero_scale.status();
     EXPECT_EQ(zero_scale->vertex_count, 4);
     EXPECT_EQ(zero_scale->locator_count, 0);
@@ -271,7 +326,7 @@ TEST(ModelStateTest, PrunesHiddenInvalidAndZeroScaleSubtrees) {
     attributes = MakeAttributes();
     attributes[0].rotation[0] = std::numeric_limits<float>::infinity();
     auto non_finite =
-        state.Extract(kGenericTag, model, attributes, poses.size(), poses);
+        state.Extract(kGenericTag, model, attributes, attributes.size());
     ASSERT_TRUE(non_finite.ok()) << non_finite.status();
     EXPECT_EQ(non_finite->vertex_count, 0);
     EXPECT_EQ(non_finite->locator_count, 0);
@@ -279,7 +334,7 @@ TEST(ModelStateTest, PrunesHiddenInvalidAndZeroScaleSubtrees) {
     attributes = MakeAttributes();
     attributes[2].locator_sequence = 1.5f;
     auto invalid_locator =
-        state.Extract(kGenericTag, model, attributes, poses.size(), poses);
+        state.Extract(kGenericTag, model, attributes, attributes.size());
     EXPECT_EQ(invalid_locator.status().code(),
               absl::StatusCode::kInvalidArgument);
     EXPECT_FALSE(state.IsValid());
@@ -292,47 +347,49 @@ TEST(ModelStateTest, MaintainsBoneNormalInParallel) {
 #endif
     auto model = MakeModel();
     auto attributes = MakeAttributes();
-    std::vector<math::PoseStack::Pose> poses(4);
     renderer::ModelState state;
 
     attributes[0].scale[0] = -2.0f;
     attributes[0].scale[1] = -2.0f;
     attributes[0].scale[2] = -2.0f;
     auto negative_uniform =
-        state.Extract(kGenericTag, model, attributes, poses.size(), poses);
+        state.Extract(kGenericTag, model, attributes, attributes.size());
     ASSERT_TRUE(negative_uniform.ok()) << negative_uniform.status();
-    EXPECT_FLOAT_EQ(poses[0].normal[0][0], -1.0f);
-    EXPECT_FLOAT_EQ(poses[0].normal[1][1], -1.0f);
-    EXPECT_FLOAT_EQ(poses[0].normal[2][2], -1.0f);
-    EXPECT_TRUE(poses[0].uniform_scale);
-    EXPECT_FLOAT_EQ(poses[0].tangent_orientation, -1.0f);
-    EXPECT_FLOAT_EQ(poses[0].normal_scale, 2.0f);
+    const auto& negative_pose = state.PoseView().bone_poses[0];
+    EXPECT_FLOAT_EQ(negative_pose.normal[0][0], -1.0f);
+    EXPECT_FLOAT_EQ(negative_pose.normal[1][1], -1.0f);
+    EXPECT_FLOAT_EQ(negative_pose.normal[2][2], -1.0f);
+    EXPECT_TRUE(negative_pose.uniform_scale);
+    EXPECT_FLOAT_EQ(negative_pose.tangent_orientation, -1.0f);
+    EXPECT_FLOAT_EQ(negative_pose.normal_scale, 2.0f);
 
     attributes[0].scale[0] = -2.0f;
     attributes[0].scale[1] = 2.0f;
     attributes[0].scale[2] = 2.0f;
     auto signed_uniform =
-        state.Extract(kGenericTag, model, attributes, poses.size(), poses);
+        state.Extract(kGenericTag, model, attributes, attributes.size());
     ASSERT_TRUE(signed_uniform.ok()) << signed_uniform.status();
-    EXPECT_FLOAT_EQ(poses[0].normal[0][0], -1.0f);
-    EXPECT_FLOAT_EQ(poses[0].normal[1][1], 1.0f);
-    EXPECT_FLOAT_EQ(poses[0].normal[2][2], 1.0f);
-    EXPECT_TRUE(poses[0].uniform_scale);
-    EXPECT_FLOAT_EQ(poses[0].tangent_orientation, -1.0f);
-    EXPECT_FLOAT_EQ(poses[0].normal_scale, 2.0f);
+    const auto& signed_pose = state.PoseView().bone_poses[0];
+    EXPECT_FLOAT_EQ(signed_pose.normal[0][0], -1.0f);
+    EXPECT_FLOAT_EQ(signed_pose.normal[1][1], 1.0f);
+    EXPECT_FLOAT_EQ(signed_pose.normal[2][2], 1.0f);
+    EXPECT_TRUE(signed_pose.uniform_scale);
+    EXPECT_FLOAT_EQ(signed_pose.tangent_orientation, -1.0f);
+    EXPECT_FLOAT_EQ(signed_pose.normal_scale, 2.0f);
 
     attributes[0].scale[0] = -2.0f;
     attributes[0].scale[1] = 3.0f;
     attributes[0].scale[2] = 4.0f;
     auto non_uniform =
-        state.Extract(kGenericTag, model, attributes, poses.size(), poses);
+        state.Extract(kGenericTag, model, attributes, attributes.size());
     ASSERT_TRUE(non_uniform.ok()) << non_uniform.status();
-    EXPECT_FLOAT_EQ(poses[0].normal[0][0], -0.5f);
-    EXPECT_FLOAT_EQ(poses[0].normal[1][1], 1.0f / 3.0f);
-    EXPECT_FLOAT_EQ(poses[0].normal[2][2], 0.25f);
-    EXPECT_FALSE(poses[0].uniform_scale);
-    EXPECT_FLOAT_EQ(poses[0].tangent_orientation, -1.0f);
-    EXPECT_FLOAT_EQ(poses[0].normal_scale, 1.0f);
+    const auto& non_uniform_pose = state.PoseView().bone_poses[0];
+    EXPECT_FLOAT_EQ(non_uniform_pose.normal[0][0], -0.5f);
+    EXPECT_FLOAT_EQ(non_uniform_pose.normal[1][1], 1.0f / 3.0f);
+    EXPECT_FLOAT_EQ(non_uniform_pose.normal[2][2], 0.25f);
+    EXPECT_FALSE(non_uniform_pose.uniform_scale);
+    EXPECT_FLOAT_EQ(non_uniform_pose.tangent_orientation, -1.0f);
+    EXPECT_FLOAT_EQ(non_uniform_pose.normal_scale, 1.0f);
 }
 
 TEST(ModelStateTest, SnapshotRendersRepeatedlyWithTrustedNormalizedNormal) {
@@ -342,16 +399,16 @@ TEST(ModelStateTest, SnapshotRendersRepeatedlyWithTrustedNormalizedNormal) {
 #endif
     auto model = MakeModel();
     auto attributes = MakeAttributes();
-    std::vector<math::PoseStack::Pose> poses(4);
     renderer::ModelState state;
     auto extracted =
-        state.Extract(kGenericTag, model, attributes, poses.size(), poses);
+        state.Extract(kGenericTag, model, attributes, attributes.size());
     ASSERT_TRUE(extracted.ok()) << extracted.status();
 
     renderer::RenderParameters parameters{};
     glm_mat4_identity(parameters.model);
     glm_mat4_identity(parameters.view);
     glm_mat4_identity(parameters.projection);
+    glm_mat3_identity(parameters.normal);
     parameters.ctx = renderer::RenderContext::kLevel;
     parameters.light = 0x1234abcd;
     parameters.overlay = 0x01020304;
@@ -397,6 +454,7 @@ TEST(ModelStateTest, ProductionPolicyRendersPrewakeAndWorkerReadySchedules) {
     glm_mat4_identity(parameters.model);
     glm_mat4_identity(parameters.view);
     glm_mat4_identity(parameters.projection);
+    glm_mat3_identity(parameters.normal);
     parameters.ctx = renderer::RenderContext::kLevel;
     parameters.light = 0x1234abcd;
     parameters.color.packed = 0xffffffff;
@@ -404,13 +462,11 @@ TEST(ModelStateTest, ProductionPolicyRendersPrewakeAndWorkerReadySchedules) {
     const auto run_case =
         [&](size_t bone_count, renderer::RenderSchedulingMode expected_mode,
             size_t repetitions, renderer::ModelState& state,
-            std::vector<math::PoseStack::Pose>& poses,
             std::vector<Byte>& output) {
         auto model = MakeFlatModel(bone_count);
         auto attributes = MakeFlatAttributes(bone_count);
-        poses.resize(bone_count);
         auto extracted =
-            state.Extract(kGenericTag, model, attributes, poses.size(), poses);
+            state.Extract(kGenericTag, model, attributes, attributes.size());
         if (!extracted.ok()) {
             ADD_FAILURE() << extracted.status();
             return false;
@@ -448,26 +504,24 @@ TEST(ModelStateTest, ProductionPolicyRendersPrewakeAndWorkerReadySchedules) {
     };
 
     renderer::ModelState prewake_state;
-    std::vector<math::PoseStack::Pose> prewake_poses;
     std::vector<Byte> prewake_output;
     ASSERT_TRUE(run_case(9, renderer::RenderSchedulingMode::kSerialPrewake, 8,
-                         prewake_state, prewake_poses, prewake_output));
+                         prewake_state, prewake_output));
 
     renderer::ModelState worker_ready_state;
-    std::vector<math::PoseStack::Pose> worker_ready_poses;
     std::vector<Byte> worker_ready_output;
     ASSERT_TRUE(run_case(224, renderer::RenderSchedulingMode::kWorkerReadySpin,
-                         32, worker_ready_state, worker_ready_poses,
-                         worker_ready_output));
+                         32, worker_ready_state, worker_ready_output));
 
-    const auto previous = worker_ready_poses.back().pose[0][0];
-    worker_ready_poses.back().pose[0][0] =
-        std::numeric_limits<float>::infinity();
+    auto& last_pose = const_cast<renderer::BonePose&>(
+        worker_ready_state.PoseView().bone_poses.back());
+    const auto previous = last_pose.pose[0][0];
+    last_pose.pose[0][0] = std::numeric_limits<float>::infinity();
     const auto error =
         renderer::Render(worker_ready_output, renderer::VertexKind::kVanilla,
                          worker_ready_state, parameters);
     EXPECT_EQ(error.code(), absl::StatusCode::kInternal);
-    worker_ready_poses.back().pose[0][0] = previous;
+    last_pose.pose[0][0] = previous;
     EXPECT_TRUE(renderer::Render(worker_ready_output,
                                  renderer::VertexKind::kVanilla,
                                  worker_ready_state, parameters)

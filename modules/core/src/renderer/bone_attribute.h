@@ -7,7 +7,7 @@
 
 namespace ysm::renderer {
 struct BoneAttribute {
-    static constexpr size_t kFloatCount = 12;
+    static constexpr size_t kFloatCount = 14;
     static constexpr size_t kSize = kFloatCount * sizeof(float);
 
     vec3 rotation{};
@@ -16,6 +16,8 @@ struct BoneAttribute {
     float cubes_hidden = 0.0f;
     float children_hidden = 0.0f;
     float locator_sequence = 0.0f;
+    float color = 16777215.0f;
+    float transparency_glow = 65535.0f;
 };
 
 static_assert(std::is_standard_layout_v<BoneAttribute>);
@@ -27,5 +29,7 @@ static_assert(offsetof(BoneAttribute, scale) == 6 * sizeof(float));
 static_assert(offsetof(BoneAttribute, cubes_hidden) == 9 * sizeof(float));
 static_assert(offsetof(BoneAttribute, children_hidden) == 10 * sizeof(float));
 static_assert(offsetof(BoneAttribute, locator_sequence) == 11 * sizeof(float));
+static_assert(offsetof(BoneAttribute, color) == 12 * sizeof(float));
+static_assert(offsetof(BoneAttribute, transparency_glow) == 13 * sizeof(float));
 static_assert(sizeof(BoneAttribute) == BoneAttribute::kSize);
 }  // namespace ysm::renderer

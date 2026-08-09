@@ -32,6 +32,10 @@ ysm_import(jni jni)
 ysm_import(yalantinglibs yalantinglibs)
 ysm_import(flatbuffers flatbuffers)
 
+if (YSM_ENABLE_TRACY)
+    ysm_import(Tracy Tracy::TracyClient)
+endif ()
+
 if(YSM_BUILD_BENCHMARKS)
     ysm_import(benchmark benchmark::benchmark)
 endif()
