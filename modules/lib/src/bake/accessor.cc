@@ -40,6 +40,7 @@ struct alignas(4) PackedCubeData {
     struct PackedQuadData {
         std::array<float, 3> normal;
         std::array<float, 4> tangent;
+        std::array<std::array<float, 2>, 4> uv;
         std::array<uint8_t, 4> vertex_index;
         float plane_d;
         float winding_sign;
@@ -200,6 +201,14 @@ YSM_JNI_ENTRY(
                              ++axis) {
                             quad.tangent[axis] =
                                 group.tangent[axis][attr_index];
+                        }
+                        for (size_t vertex = 0; vertex < quad.uv.size();
+                             ++vertex) {
+                            for (size_t axis = 0; axis < quad.uv[vertex].size();
+                                 ++axis) {
+                                quad.uv[vertex][axis] =
+                                    cube_attr.quad_attr[quad_index].uv[vertex][axis];
+                            }
                         }
                         for (size_t vertex = 0;
                              vertex < quad.vertex_index.size(); ++vertex) {
