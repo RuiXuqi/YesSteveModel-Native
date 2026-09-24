@@ -1,0 +1,160 @@
+name: Build Native Windows x64
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: CMake build type
+        required: true
+        default: Release
+        type: choice
+        options:
+          - Release
+          - Debug
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      BUILD_TYPE: ${{ inputs.build_type || 'Release' }}
+      CONAN_VERSION: '2.31.1'
+      LLVM_VERSION: '22.1.5'
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up MSVC x64 environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+
+      - name: Install LLVM
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "clang+llvm-$env:LLVM_VERSION-x86_64-pc-windows-msvc.tar.xz"
+          $archiveUrl = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$env:LLVM_VERSION/clang+llvm-$env:LLVM_VERSION-x86_64-pc-windows-msvc.tar.xz"
+          Invoke-WebRequest -Uri $archiveUrl -OutFile $archive
+          tar -xf $archive -C $env:RUNNER_TEMP
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+          $llvmBin = Join-Path $env:RUNNER_TEMP "clang+llvm-$env:LLVM_VERSION-x86_64-pc-windows-msvc\bin"
+          if (-not (Test-Path (Join-Path $llvmBin 'clang-cl.exe'))) {
+            throw "clang-cl.exe was not found in $llvmBin"
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $llvmBin -Encoding utf8
+          & (Join-Path $llvmBin 'clang-cl.exe') --version
+          & (Join-Path $llvmBin 'lld-link.exe') --version
+
+      - name: Install build tools
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "conan==$env:CONAN_VERSION"
+
+          if (-not (Get-Command nasm -ErrorAction SilentlyContinue)) {
+            choco install nasm --yes --no-progress
+          }
+
+          cmake --version
+          ninja --version
+          conan --version
+          nasm -version
+
+      - name: Cache Conan packages
+        uses: actions/cache@v6
+        with:
+          path: conan/cache
+          key: conan-windows-x64-${{ env.BUILD_TYPE }}-llvm-${{ env.LLVM_VERSION }}-conan-${{ env.CONAN_VERSION }}-${{ hashFiles('**/conanfile.py') }}
+          restore-keys: |
+            conan-windows-x64-${{ env.BUILD_TYPE }}-llvm-${{ env.LLVM_VERSION }}-conan-${{ env.CONAN_VERSION }}-
+            conan-windows-x64-
+
+      - name: Configure Conan clang-cl profile
+        shell: pwsh
+        run: |
+          $profileDirectory = Join-Path $env:GITHUB_WORKSPACE 'conan\cache\profiles'
+          New-Item -ItemType Directory -Force -Path $profileDirectory | Out-Null
+          $runtimeType = if ($env:BUILD_TYPE -eq 'Debug') { 'Debug' } else { 'Release' }
+          $profilePath = Join-Path $profileDirectory 'default'
+          @"
+          [settings]
+          os=Windows
+          arch=x86_64
+          build_type=$env:BUILD_TYPE
+          compiler=clang
+          compiler.version=22
+          compiler.cppstd=23
+          compiler.runtime=static
+          compiler.runtime_type=$runtimeType
+          compiler.runtime_version=v145
+
+          [conf]
+          tools.build:compiler_executables={"cpp":"clang-cl","c":"clang-cl","rc":"clang"}
+          tools.cmake.cmaketoolchain:generator=Ninja
+          "@ | Set-Content -Path $profilePath -Encoding ascii
+          Get-Content $profilePath
+
+      - name: Index dependency recipes
+        shell: cmd
+        run: .\bootstrap.cmd setup
+
+      - name: Build ysm-lib-jni
+        shell: pwsh
+        run: |
+          if ($env:BUILD_TYPE -eq 'Debug') {
+            & .\bootstrap.cmd build native --debug
+          } else {
+            & .\bootstrap.cmd build native
+          }
+
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Collect native library
+        shell: pwsh
+        run: |
+          $libraries = @(Get-ChildItem -Path build -Recurse -File -Filter 'ysm.dll')
+          if ($libraries.Count -ne 1) {
+            Write-Error "Expected exactly one ysm.dll, found $($libraries.Count)."
+            Get-ChildItem -Path build -Recurse -File | Select-Object FullName
+            exit 1
+          }
+
+          New-Item -ItemType Directory -Force -Path artifact | Out-Null
+          Copy-Item $libraries[0].FullName artifact\ysm.dll
+
+          $pdb = Get-ChildItem -Path build -Recurse -File -Filter 'ysm.pdb' | Select-Object -First 1
+          if ($null -ne $pdb) {
+            Copy-Item $pdb.FullName artifact\ysm.pdb
+          }
+
+          $hash = Get-FileHash artifact\ysm.dll -Algorithm SHA256
+          "build_type=$env:BUILD_TYPE" | Set-Content artifact\BUILD.txt
+          "source=$($libraries[0].FullName)" | Add-Content artifact\BUILD.txt
+          "$($hash.Algorithm)=$($hash.Hash)" | Add-Content artifact\BUILD.txt
+
+          Get-ChildItem artifact | Select-Object Name, Length
+          Get-Content artifact\BUILD.txt
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ysm-native-windows-x64-${{ env.BUILD_TYPE }}
+          path: artifact
+          if-no-files-found: error
+          retention-days: 14
