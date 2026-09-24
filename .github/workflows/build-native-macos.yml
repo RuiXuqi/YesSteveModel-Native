@@ -129,6 +129,7 @@ jobs:
 
           [conf]
           tools.build:compiler_executables={"c":"${LLVM_BIN}/clang","cpp":"${LLVM_BIN}/clang++"}
+          tools.cmake.cmaketoolchain:extra_variables={"CMAKE_AR":"${LLVM_BIN}/llvm-ar","CMAKE_RANLIB":"${LLVM_BIN}/llvm-ranlib","CMAKE_C_COMPILER_AR":"${LLVM_BIN}/llvm-ar","CMAKE_CXX_COMPILER_AR":"${LLVM_BIN}/llvm-ar","CMAKE_C_COMPILER_RANLIB":"${LLVM_BIN}/llvm-ranlib","CMAKE_CXX_COMPILER_RANLIB":"${LLVM_BIN}/llvm-ranlib"}
           tools.cmake.cmaketoolchain:generator=Ninja
           EOF
           cat "$profile_dir/default"

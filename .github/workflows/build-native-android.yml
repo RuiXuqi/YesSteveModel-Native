@@ -166,7 +166,15 @@ jobs:
           test "$compiler_version" = "$LLVM_MAJOR"
           ndk_compiler="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android${ANDROID_API_LEVEL}-clang"
           test -x "$ndk_compiler"
+          ndk_resource_dir="$("$ndk_compiler" -print-resource-dir)"
+          ndk_sysroot_lib_dir="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/${ANDROID_API_LEVEL}"
+          ndk_runtime_lib_dir="$ndk_resource_dir/lib/linux/aarch64"
+          test -d "$ndk_resource_dir"
+          test -d "$ndk_sysroot_lib_dir"
+          test -d "$ndk_runtime_lib_dir"
           "$ndk_compiler" --version
+          printf 'NDK runtime resource directory: %s\n' "$ndk_resource_dir"
+          find "$ndk_runtime_lib_dir" -maxdepth 1 -type f -name 'libclang_rt.builtins*' -print
 
           cat > "$toolchain/conan/android-arm64" <<EOF
           [settings]
@@ -182,6 +190,8 @@ jobs:
           tools.android:ndk_path=${ANDROID_NDK_ROOT}
           tools.android:cmake_legacy_toolchain=False
           tools.build:compiler_executables={"c":"clang-22","cpp":"clang++-22"}
+          tools.build:exelinkflags=["-rtlib=compiler-rt","-resource-dir=${ndk_resource_dir}","-L${ndk_sysroot_lib_dir}","-L${ndk_runtime_lib_dir}"]
+          tools.build:sharedlinkflags=["-rtlib=compiler-rt","-resource-dir=${ndk_resource_dir}","-L${ndk_sysroot_lib_dir}","-L${ndk_runtime_lib_dir}"]
           tools.cmake.cmaketoolchain:generator=Ninja
           EOF
 

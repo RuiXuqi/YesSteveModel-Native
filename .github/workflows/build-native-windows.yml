@@ -103,7 +103,7 @@ jobs:
           compiler.runtime_version=v145
 
           [conf]
-          tools.build:compiler_executables={"cpp":"clang-cl","c":"clang-cl","rc":"clang"}
+          tools.build:compiler_executables={"cpp":"clang-cl","c":"clang-cl","rc":"rc.exe"}
           tools.cmake.cmaketoolchain:generator=Ninja
           "@ | Set-Content -Path $profilePath -Encoding ascii
           Get-Content $profilePath
