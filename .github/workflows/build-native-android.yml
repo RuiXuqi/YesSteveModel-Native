@@ -192,8 +192,8 @@ jobs:
           tools.graph:skip_test=True
           tools.build:skip_test=True
           tools.build:compiler_executables={"c":"clang-22","cpp":"clang++-22"}
-          tools.build:exelinkflags=["-rtlib=compiler-rt","-resource-dir=${ndk_resource_dir}","-L${ndk_sysroot_lib_dir}","-L${ndk_runtime_lib_dir}"]
-          tools.build:sharedlinkflags=["-rtlib=compiler-rt","-resource-dir=${ndk_resource_dir}","-L${ndk_sysroot_lib_dir}","-L${ndk_runtime_lib_dir}"]
+          tools.build:exelinkflags=["-rtlib=compiler-rt","-unwindlib=libunwind","-resource-dir=${ndk_resource_dir}","-L${ndk_sysroot_lib_dir}","-L${ndk_runtime_lib_dir}"]
+          tools.build:sharedlinkflags=["-rtlib=compiler-rt","-unwindlib=libunwind","-resource-dir=${ndk_resource_dir}","-L${ndk_sysroot_lib_dir}","-L${ndk_runtime_lib_dir}"]
           tools.cmake.cmaketoolchain:generator=Ninja
           EOF
 
