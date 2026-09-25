@@ -112,6 +112,10 @@ class YsmDependencyBaseConan(ConanFile):
             tc.variables[key] = value
         for key, value in self._build_data.get("options", {}).items():
             tc.variables[key] = self._cmake_value(value)
+        for key, value in self._build_data.get("cache_variables", {}).items():
+            resolved_value = self._cmake_value(value)
+            if resolved_value is not None:
+                tc.cache_variables[key] = resolved_value
         tc.variables["YSM_REQUIRED_PACKAGES"] = ";".join(required_packages)
         tc.variables["YSM_GLOBAL_LINK_TARGETS"] = ";".join(
             self._build_data.get("global_link_targets", [])

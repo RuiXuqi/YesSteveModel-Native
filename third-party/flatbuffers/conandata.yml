@@ -4,7 +4,7 @@ sources:
     tag: v25.12.19-2026-02-06-03fffb2
     commit: 03fffb25e2d777462b719cb4964249c30b19d58f
 requirements:
-- mimalloc/3.3.2@ysm/stable
+- mimalloc/3.5.3@ysm/stable
 build:
   global_link_targets:
   - mimalloc-static

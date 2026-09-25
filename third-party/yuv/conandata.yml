@@ -7,7 +7,7 @@ patches:
   - patch_file: patches/yuv.patch
   - patch_file: patches/yuv-static-only.patch
 requirements:
-- mimalloc/3.3.2@ysm/stable
+- mimalloc/3.5.3@ysm/stable
 build:
   global_link_targets:
   - mimalloc-static
