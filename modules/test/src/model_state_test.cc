@@ -9,13 +9,13 @@
 
 #include <gtest/gtest.h>
 
-#include "gfx/bake/baked_model.h"
 #include "buffer.h"
 #include "cpu.h"
+#include "gfx/bake/baked_model.h"
 #include "gfx/renderer/model_state.h"
 #include "gfx/renderer/render.h"
-#include "gfx/renderer/vertex/iris_56.h"
-#include "gfx/renderer/vertex/vanilla.h"
+#include "renderer/vertex/iris_56.h"
+#include "renderer/vertex/vanilla.h"
 
 namespace ysm::test {
 namespace {

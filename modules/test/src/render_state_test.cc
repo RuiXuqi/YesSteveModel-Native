@@ -9,7 +9,7 @@
 
 #include "cpu.h"
 #include "gfx/renderer/render.h"
-#include "gfx/renderer/render_state.h"
+#include "renderer/render_state.h"
 
 namespace ysm::test {
 namespace {

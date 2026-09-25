@@ -1,4 +1,4 @@
-#include "codec/7z/file_stream.h"
+#include "file_stream.h"
 
 #include <absl/log/absl_log.h>
 #include "string_cvt.h"

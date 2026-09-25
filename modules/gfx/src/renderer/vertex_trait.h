@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vertex/kind.h"
+#include "gfx/renderer/vertex/kind.h"
 
 #include "buffer/common.h"
 #include "buffer/iris.h"

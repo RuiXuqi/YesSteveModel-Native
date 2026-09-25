@@ -8,7 +8,7 @@
 #include <cglm/euler.h>
 #include <gtest/gtest.h>
 
-#include "gfx/math/euler.h"
+#include "math/euler.h"
 
 namespace ysm::test {
 namespace {

@@ -4,12 +4,12 @@
 #include <limits>
 
 #include "gfx/bake/baked_model.h"
+#include "renderer/render_state.h"
 #include "cpu.h"
 #include "fast_math.h"
 #include "inline.h"
-#include "gfx/renderer/cube/output.h"
-#include "gfx/renderer/render_state.h"
-#include "gfx/renderer/cube/transform_sse41.h"
+#include "output.h"
+#include "transform_sse41.h"
 
 YSM_FAST_MATH_BEGIN
 

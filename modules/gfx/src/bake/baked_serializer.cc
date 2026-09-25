@@ -11,7 +11,7 @@
 #include <flatbuffers/flatbuffers.h>
 #include <flatbuffers/verifier.h>
 
-#include "gfx/bake/fbs/baked_model_generated.h"
+#include "fbs/baked_model_generated.h"
 
 namespace ysm::gfx::bake {
 namespace {

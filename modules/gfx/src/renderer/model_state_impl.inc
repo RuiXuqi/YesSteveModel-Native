@@ -7,7 +7,7 @@
 #include <ranges>
 
 #include "err.h"
-#include "gfx/renderer/parallel_executor.h"
+#include "parallel_executor.h"
 #include "profile.h"
 
 YSM_FAST_MATH_BEGIN

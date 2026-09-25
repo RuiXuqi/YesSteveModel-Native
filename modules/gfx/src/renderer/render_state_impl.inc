@@ -5,13 +5,13 @@
 #include <ranges>
 #include <cglm/vec4.h>
 
-#include "gfx/math/pose_stack.h"
 #include "err.h"
 #include "fast_math.h"
 #include "inline.h"
-#include "gfx/math/mat4_mul.h"
 #include "profile.h"
-#include "gfx/renderer/render_state.h"
+#include "gfx/math/pose_stack.h"
+#include "math/mat4_mul.h"
+#include "render_state.h"
 
 YSM_FAST_MATH_BEGIN
 

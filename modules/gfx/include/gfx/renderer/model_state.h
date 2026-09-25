@@ -9,10 +9,10 @@
 
 #include <absl/status/statusor.h>
 
+#include "gfx/math/pose_stack.h"
 #include "gfx/bake/baked_model.h"
 #include "bone_attribute.h"
 #include "color.h"
-#include "gfx/math/pose_stack.h"
 #include "schedule.h"
 
 namespace ysm::gfx::renderer {

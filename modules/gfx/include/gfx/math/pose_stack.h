@@ -4,6 +4,7 @@
 #include <vector>
 #include <cassert>
 #include <cmath>
+#include <cstring>
 
 #include <cglm/mat3.h>
 #include <cglm/mat4.h>
@@ -12,9 +13,6 @@
 #include "system_allocator.h"
 #include "fast_math.h"
 #include "inline.h"
-#include "gfx/math/euler.h"
-#include "gfx/math/float.h"
-#include "gfx/math/mat4_mul.h"
 
 YSM_FAST_MATH_BEGIN
 

@@ -3,7 +3,6 @@
 #include "non_copyable.h"
 #include "quad_ref.h"
 #include "gfx/renderer/render.h"
-#include "gfx/renderer/vertex/vanilla.h"
 
 namespace ysm::gfx::renderer::buffer {
     template <typename VertexType>

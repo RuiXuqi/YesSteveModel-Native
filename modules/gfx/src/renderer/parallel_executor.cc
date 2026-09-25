@@ -1,4 +1,4 @@
-#include "gfx/renderer/parallel_executor.h"
+#include "parallel_executor.h"
 
 #include <algorithm>
 #include <thread>

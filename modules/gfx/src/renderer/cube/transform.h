@@ -4,17 +4,18 @@
 
 #include "cpu.h"
 #include "fast_math.h"
+
 #include "gfx/bake/baked_model.h"
-#include "gfx/renderer/cube/output.h"
-#include "gfx/renderer/cube/transform_common.h"
-#include "gfx/renderer/render_state.h"
+#include "renderer/render_state.h"
+#include "output.h"
+#include "transform_common.h"
 
 #ifdef YSM_X64
-#include "gfx/renderer/cube/transform_avx2.h"
-#include "gfx/renderer/cube/transform_avx512.h"
-#include "gfx/renderer/cube/transform_sse41.h"
+#include "transform_avx2.h"
+#include "transform_avx512.h"
+#include "transform_sse41.h"
 #elif (defined YSM_ARM64)
-#include "gfx/renderer/cube/transform_neon.h"
+#include "transform_neon.h"
 #endif
 
 YSM_FAST_MATH_BEGIN

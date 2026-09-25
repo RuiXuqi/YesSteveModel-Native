@@ -1,9 +1,9 @@
 #include <gtest/gtest.h>
 
-#include "gfx/renderer/vertex/iris_54.h"
-#include "gfx/renderer/vertex/iris_55.h"
-#include "gfx/renderer/vertex/iris_56.h"
-#include "gfx/renderer/vertex/iris_56_ar.h"
+#include "renderer/vertex/iris_54.h"
+#include "renderer/vertex/iris_55.h"
+#include "renderer/vertex/iris_56.h"
+#include "renderer/vertex/iris_56_ar.h"
 
 namespace ysm::test {
 

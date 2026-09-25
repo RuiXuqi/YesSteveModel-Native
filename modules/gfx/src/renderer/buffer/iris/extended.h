@@ -7,7 +7,7 @@
 
 #include "cpu.h"
 #include "quad_batch.h"
-#include "gfx/renderer/buffer/normal.h"
+#include "renderer/buffer/normal.h"
 
 #ifdef YSM_X64
 
