@@ -5,9 +5,9 @@
 #include "assume.h"
 #include "fast_math.h"
 #include "gfx/renderer/render.h"
-#include "gfx/renderer/render_state.h"
-#include "gfx/renderer/cube/output.h"
-#include "gfx/renderer/cube/transform.h"
+#include "cube/output.h"
+#include "cube/transform.h"
+#include "render_state.h"
 
 #endif
 

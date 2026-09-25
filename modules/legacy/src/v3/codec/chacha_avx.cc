@@ -11,7 +11,7 @@
 
 namespace ysm::legacy::v3::codec::internal {
 namespace {
-struct Rows {
+struct alignas(32) Rows {
     __m256i row0;
     __m256i row1;
     __m256i row2;
@@ -79,7 +79,7 @@ YSM_TARGET_AVX2 inline __m256i AddBlockCounters(__m256i state3,
 
 YSM_TARGET_AVX2 void ChaChaXor8Avx2(const ChaChaState& state, Byte* bytes,
                                     std::uint32_t rounds) noexcept {
-    const std::array<__m256i, 4> base{
+    alignas(32) const std::array<__m256i, 4> base{
         _mm256_broadcastsi128_si256(
             _mm_loadu_si128(reinterpret_cast<const __m128i*>(state.data()))),
         _mm256_broadcastsi128_si256(_mm_loadu_si128(
@@ -88,7 +88,7 @@ YSM_TARGET_AVX2 void ChaChaXor8Avx2(const ChaChaState& state, Byte* bytes,
             reinterpret_cast<const __m128i*>(state.data() + 8))),
         _mm256_broadcastsi128_si256(_mm_loadu_si128(
             reinterpret_cast<const __m128i*>(state.data() + 12)))};
-    std::array<Rows, 4> pairs{};
+    alignas(32) std::array<Rows, 4> pairs{};
     for (std::size_t pair = 0; pair < pairs.size(); ++pair) {
         const auto first = pair * 2;
         pairs[pair] = {base[0], base[1], base[2],
@@ -103,10 +103,10 @@ YSM_TARGET_AVX2 void ChaChaXor8Avx2(const ChaChaState& state, Byte* bytes,
 
     for (std::size_t pair = 0; pair < pairs.size(); ++pair) {
         const auto first = pair * 2;
-        const std::array<__m256i, 4> initial{
+        alignas(32) const std::array<__m256i, 4> initial{
             base[0], base[1], base[2],
             AddBlockCounters(base[3], first, first + 1)};
-        const std::array<__m256i, 4> result{
+        alignas(32) const std::array<__m256i, 4> result{
             _mm256_add_epi32(pairs[pair].row0, initial[0]),
             _mm256_add_epi32(pairs[pair].row1, initial[1]),
             _mm256_add_epi32(pairs[pair].row2, initial[2]),

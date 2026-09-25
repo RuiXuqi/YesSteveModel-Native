@@ -7,7 +7,7 @@ patches:
   '25.01':
   - patch_file: patches/lzma.patch
 requirements:
-- mimalloc/3.3.2@ysm/stable
+- mimalloc/3.5.3@ysm/stable
 build:
   global_link_targets:
   - mimalloc-static

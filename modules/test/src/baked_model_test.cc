@@ -8,10 +8,10 @@
 #include <gtest/gtest.h>
 #include <ylt/struct_pb.hpp>
 
+#include "bake/fbs/baked_model_generated.h"
+#include "cpu.h"
 #include "gfx/bake/baked_model.h"
 #include "gfx/bake/baked_serializer.h"
-#include "gfx/bake/fbs/baked_model_generated.h"
-#include "cpu.h"
 #include "proto/asset/model/data/geo_model.proto.h"
 
 namespace ysm::test {

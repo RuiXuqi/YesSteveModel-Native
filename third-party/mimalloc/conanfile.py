@@ -8,8 +8,8 @@ class MimallocConan(ConanFile):
     settings = "os", "arch", "compiler", "build_type"
     exports_sources = "patches/*", "src/*"
     name = "mimalloc"
-    version = "3.3.2"
-    license = ""
+    version = "3.5.3"
+    license = "MIT"
     package_type = "static-library"
 
     options = {"fPIC": [True, False]}

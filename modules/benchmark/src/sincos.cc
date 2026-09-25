@@ -15,7 +15,7 @@
 
 #include "cpu.h"
 #include "inline.h"
-#include "gfx/math/euler.h"
+#include "math/euler.h"
 
 namespace ysm::benchmarking {
 namespace {

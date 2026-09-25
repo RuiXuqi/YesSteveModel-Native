@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include "cpu.h"
 #include "gfx/math/pose_stack.h"
 
 namespace ysm::test {

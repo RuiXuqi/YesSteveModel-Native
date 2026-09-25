@@ -6,6 +6,11 @@ unset(gfx_code_files)
 set_property(TARGET ysm-gfx PROPERTY CXX_STANDARD 23)
 target_include_directories(ysm-gfx PUBLIC include PRIVATE src)
 
+add_library(ysm-gfx-internal INTERFACE)
+target_include_directories(ysm-gfx-internal INTERFACE
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>")
+target_link_libraries(ysm-gfx-internal INTERFACE ysm-gfx)
+
 if (YSM_ENABLE_DEBUG_LOG)
     target_compile_definitions(ysm-gfx PRIVATE
             YSM_ENABLE_DEBUG_LOG=1

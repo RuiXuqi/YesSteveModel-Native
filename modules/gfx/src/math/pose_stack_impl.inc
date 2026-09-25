@@ -1,15 +1,15 @@
-#include <cglm/euler.h>
-
-#include "gfx/math/pose_stack.h"
-
+// ReSharper disable once CppMissingIncludeGuard
 #include <vector>
 
+#include <cglm/euler.h>
 #include <cglm/mat3.h>
 #include <cglm/mat4.h>
 
 #include "fast_math.h"
-#include "gfx/math/euler.h"
-#include "gfx/math/mat4_mul.h"
+#include "gfx/math/pose_stack.h"
+#include "math/euler.h"
+#include "math/float.h"
+#include "math/mat4_mul.h"
 
 YSM_FAST_MATH_BEGIN
 

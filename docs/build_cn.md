@@ -28,7 +28,8 @@ Windows 示例:
 ```bash
 .\bootstrap.cmd setup
 ```
-<sub>*如果使用 Visual Studio MSVC 构建，要先为命令行设置 vcvars*</span>
+
+<sub>*如果使用 Visual Studio MSVC 构建，要先为命令行设置 vcvars*</sub>
 
 Linux 示例:
 

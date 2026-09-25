@@ -4,7 +4,10 @@ file(GLOB_RECURSE benchmark_code_files CONFIGURE_DEPENDS src/*.cpp src/*.cc)
 add_executable(ysm-benchmark ${benchmark_code_files})
 unset(benchmark_code_files)
 set_property(TARGET ysm-benchmark PROPERTY CXX_STANDARD 23)
-target_link_libraries(ysm-benchmark PRIVATE ysm-core ysm-gfx benchmark::benchmark)
+target_link_libraries(ysm-benchmark PRIVATE
+        ysm-core
+        ysm-gfx-internal
+        benchmark::benchmark)
 
 if (YSM_X64)
     if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")

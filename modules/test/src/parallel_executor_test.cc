@@ -5,7 +5,7 @@
 #include <gtest/gtest.h>
 
 #include "cpu_topology.h"
-#include "gfx/renderer/parallel_executor.h"
+#include "renderer/parallel_executor.h"
 
 namespace ysm::gfx::renderer::internal {
 namespace {

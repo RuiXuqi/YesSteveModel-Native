@@ -11,7 +11,7 @@ requirements:
 - yuv/0.0.1892@ysm/stable
 - dav1d/1.5.3@ysm/stable
 - webp/1.6.0@ysm/stable
-- mimalloc/3.3.2@ysm/stable
+- mimalloc/3.5.3@ysm/stable
 - ref: svt-av1/4.1.0@ysm/stable
   skip_os:
   - Android

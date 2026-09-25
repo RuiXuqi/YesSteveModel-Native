@@ -5,9 +5,10 @@
 #include <7zTypes.h>
 #include <mutex>
 #include <variant>
+
 #include "string_cvt.h"
-#include "codec/7z/file_stream.h"
-#include "codec/7z/mem_stream.h"
+#include "7z/file_stream.h"
+#include "7z/mem_stream.h"
 #include "err.h"
 #include "non_copyable.h"
 

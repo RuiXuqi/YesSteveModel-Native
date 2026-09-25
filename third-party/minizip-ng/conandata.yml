@@ -9,7 +9,7 @@ patches:
   - patch_file: patches/minizip-ng-mimalloc.patch
 requirements:
 - zlib-ng/2.3.3@ysm/stable
-- mimalloc/3.3.2@ysm/stable
+- mimalloc/3.5.3@ysm/stable
 build:
   global_link_targets:
   - mimalloc-static

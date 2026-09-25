@@ -10,8 +10,8 @@
 #include <vector>
 
 #include "gfx/bake/baked_model.h"
-#include "model_state.h"
-#include "render.h"
+#include "gfx/renderer/model_state.h"
+#include "gfx/renderer/render.h"
 #include "system_allocator.h"
 
 namespace ysm::gfx::renderer {

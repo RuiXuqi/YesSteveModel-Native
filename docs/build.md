@@ -29,7 +29,7 @@ Run this from the project root:
 .\bootstrap.cmd setup
 ```
 
-<sub>*If you are building with Visual Studio's MSVC toolchain, you must first run the vcvars script to set up the command-line environment.*</span>
+<sub>*If you are building with Visual Studio's MSVC toolchain, you must first run the vcvars script to set up the command-line environment.*</sub>
 
 ### Linux Example
 

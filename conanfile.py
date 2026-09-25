@@ -18,7 +18,7 @@ class YsmConan(ConanFile):
     }
 
     def requirements(self):
-        self.requires("mimalloc/3.3.2@ysm/stable")
+        self.requires("mimalloc/3.5.3@ysm/stable")
         self.requires("cpu_features/0.11.0@ysm/stable")
         self.requires("abseil/20260107.1@ysm/stable")
         self.requires("zlib-ng/2.3.3@ysm/stable")

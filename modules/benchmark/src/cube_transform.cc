@@ -14,7 +14,7 @@
 
 #include "cpu.h"
 #include "inline.h"
-#include "gfx/renderer/cube/transform.h"
+#include "renderer/cube/transform.h"
 
 #ifdef YSM_X64
 

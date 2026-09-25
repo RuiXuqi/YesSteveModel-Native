@@ -10,9 +10,10 @@
 
 #include "fast_math.h"
 #include "inline.h"
-#include "gfx/renderer/buffer/normal.h"
-#include "gfx/renderer/cube/output.h"
-#include "gfx/renderer/render_state.h"
+
+#include "renderer/render_state.h"
+#include "renderer/buffer/normal.h"
+#include "output.h"
 
 YSM_FAST_MATH_BEGIN
 

@@ -4,8 +4,8 @@
 #include <gtest/gtest.h>
 
 #include "cpu.h"
-#include "gfx/renderer/buffer/quad_ref.h"
-#include "gfx/renderer/cube/transform.h"
+#include "renderer/buffer/quad_ref.h"
+#include "renderer/cube/transform.h"
 
 namespace ysm::test {
 namespace {

@@ -5,12 +5,13 @@
 #include <limits>
 
 #include "cpu.h"
-#include "gfx/bake/baked_model.h"
 #include "fast_math.h"
 #include "inline.h"
-#include "gfx/renderer/cube/output.h"
-#include "gfx/renderer/render_state.h"
-#include "gfx/renderer/cube/transform_common.h"
+
+#include "gfx/bake/baked_model.h"
+#include "renderer/render_state.h"
+#include "output.h"
+#include "transform_common.h"
 
 YSM_FAST_MATH_BEGIN
 

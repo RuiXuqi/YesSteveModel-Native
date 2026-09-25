@@ -1,4 +1,4 @@
-#include "codec/7z/mem_stream.h"
+#include "mem_stream.h"
 
 #include <cstring>
 

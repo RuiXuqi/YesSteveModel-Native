@@ -14,7 +14,7 @@ target_compile_definitions(ysm-test PRIVATE
 target_link_libraries(ysm-test PRIVATE
         ysm-proto
         ysm-core
-        ysm-gfx
+        ysm-gfx-internal
         ysm-codec
         ysm-java
         ysm-legacy

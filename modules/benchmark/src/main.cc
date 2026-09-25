@@ -24,7 +24,7 @@
 
 #include "cglm_avx.h"
 #include "inline.h"
-#include "gfx/math/mat4_mul.h"
+#include "math/mat4_mul.h"
 
 namespace {
 
